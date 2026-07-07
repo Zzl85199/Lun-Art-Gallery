@@ -25,12 +25,12 @@
   --ink-soft: #5b4f3f;
   --shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.25);
   --shadow-lift: 0 18px 30px rgba(0, 0, 0, 0.32);
-  --radius-note: 6px;
+  --radius-note: 14px;
 
-  --font-display-zh: "Ma Shan Zheng", "Kalam", cursive;
-  --font-display-en: "Kalam", cursive;
+  --font-display-zh: "ZCOOL KuaiLe", "Fredoka", cursive;
+  --font-display-en: "Fredoka", cursive;
   --font-body: "Noto Sans TC", "Nunito", sans-serif;
-  --font-hand: "Zhi Mang Xing", "Kalam", cursive;
+  --font-hand: "ZCOOL QingKe HuangYou", "ZCOOL KuaiLe", cursive;
 }
 
 * {
@@ -157,6 +157,20 @@ button {
   gap: 8px;
 }
 
+.brand-icon {
+  display: inline-block;
+}
+
+.brand:hover .brand-icon {
+  animation: wiggle 0.6s ease;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-18deg); }
+  75% { transform: rotate(18deg); }
+}
+
 .brand small {
   font-family: var(--font-body);
   font-size: 0.7rem;
@@ -176,8 +190,8 @@ button {
   color: var(--chalk-white);
   background: transparent;
   border: 2px dashed rgba(245, 241, 230, 0.35);
-  border-radius: 5px 5px 2px 2px;
-  padding: 6px 14px;
+  border-radius: 999px;
+  padding: 6px 16px;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
   display: inline-block;
 }
@@ -201,8 +215,8 @@ button {
   display: inline-block;
   font-family: var(--font-display-en);
   font-size: 1.1rem;
-  padding: 10px 22px;
-  border-radius: 4px;
+  padding: 10px 24px;
+  border-radius: 999px;
   border: 2px solid transparent;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -291,6 +305,40 @@ button {
   pointer-events: none;
 }
 
+/* 漂浮的可愛裝飾貼紙 */
+.hero-decor {
+  position: absolute;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+  animation: floatBob 4.5s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0) rotate(-6deg); }
+  50% { transform: translateY(-16px) rotate(6deg); }
+}
+
+.hero-decor.d1 { top: 10%; left: 6%; font-size: 2.3rem; animation-delay: 0s; }
+.hero-decor.d2 { top: 16%; right: 7%; font-size: 1.9rem; animation-delay: 0.7s; }
+.hero-decor.d3 { bottom: 14%; left: 9%; font-size: 1.7rem; animation-delay: 1.4s; }
+.hero-decor.d4 { bottom: 18%; right: 11%; font-size: 2.1rem; animation-delay: 2.1s; }
+.hero-decor.d5 { top: 46%; left: 2%; font-size: 1.5rem; animation-delay: 0.4s; display: none; }
+
+@media (min-width: 900px) {
+  .hero-decor.d5 { display: block; }
+}
+
+/* 波浪分隔線：黑板轉軟木塞區塊之間的可愛過場 */
+.wave-divider {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin-top: -2px;
+  position: relative;
+  z-index: 2;
+}
+
 /* ===================================================================
    便條紙卡片（作品卡片）— 公佈欄核心元件
    =================================================================== */
@@ -347,15 +395,45 @@ button {
   box-shadow: 0 3px 4px rgba(0,0,0,0.35), inset 0 2px 2px rgba(255,255,255,0.5);
   z-index: 2;
 }
+.note-card .pin::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+}
 .note-card:nth-child(3n) .pin { background: var(--pushpin-blue); }
 .note-card:nth-child(3n+1) .pin { background: var(--pushpin-red); }
 .note-card:nth-child(3n+2) .pin { background: var(--pushpin-yellow); }
+
+.note-card .sticker {
+  position: absolute;
+  top: -14px;
+  left: 6px;
+  font-size: 1.4rem;
+  transform: rotate(-18deg);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+  z-index: 3;
+  line-height: 1;
+}
+.note-card .sticker::before { content: "⭐"; }
+.note-card:nth-child(5n+2) .sticker::before { content: "✨"; }
+.note-card:nth-child(5n+3) .sticker::before { content: "💖"; }
+.note-card:nth-child(5n+4) .sticker::before { content: "🌈"; }
+.note-card:nth-child(5n) .sticker::before { content: "🎨"; }
 
 .note-card .tape-corner {
   position: absolute;
   width: 46px;
   height: 20px;
-  background: var(--tape);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--tape) 0 6px,
+    rgba(255, 255, 255, 0.4) 6px 12px
+  );
   top: -8px;
   right: 10px;
   transform: rotate(8deg);
@@ -364,7 +442,7 @@ button {
 
 .note-thumb-wrap {
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: 10px;
   background: var(--kraft);
   aspect-ratio: 4 / 3;
   margin-bottom: 10px;
@@ -764,6 +842,7 @@ button {
   max-width: 720px;
   margin: 0 auto;
   padding: 50px 0 90px;
+  position: relative;
 }
 
 .steps-note {
@@ -854,6 +933,7 @@ button {
   margin: 0 auto;
   padding: 60px 0 90px;
   color: var(--paper);
+  position: relative;
 }
 
 .about-wrap h1 {

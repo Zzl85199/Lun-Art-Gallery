@@ -49,6 +49,7 @@ function createNoteCardEl(art) {
 
   card.innerHTML = `
     <span class="pin"></span>
+    <span class="sticker"></span>
     <span class="tape-corner"></span>
     <div class="note-thumb-wrap">
       <img loading="lazy" alt="${escapeHtml(art.StudentName)} 的 AI 作品" src="${escapeHtml(art.ImageURL)}">
