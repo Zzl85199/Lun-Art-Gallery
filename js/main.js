@@ -26,16 +26,35 @@ function renderFooterYear() {
   if (el) el.textContent = new Date().getFullYear();
 }
 
-/** 圖片載入失敗時，自動切換成 Google Drive 備援連結 */
-function attachImageFallback(imgEl, backupUrl) {
-  if (!backupUrl) return;
-  let triedBackup = false;
-  imgEl.addEventListener("error", () => {
-    if (!triedBackup) {
-      triedBackup = true;
+/**
+ * 設定圖片來源與失敗時的備援流程：
+ * 1. 沒有圖片連結 → 直接顯示可愛的「尚無圖片」預留圖示，不嘗試載入、不會出現破圖
+ * 2. 圖片載入失敗 → 自動切換成 Google Drive 備援連結
+ * 3. 備援連結也失敗（或沒有備援連結） → 顯示「尚無圖片」預留圖示，取代瀏覽器的破圖 icon
+ */
+function setupImageWithFallback(imgEl, placeholderEl, url, backupUrl) {
+  let stage = 0;
+  imgEl.onerror = null;
+
+  if (!url) {
+    imgEl.style.display = "none";
+    placeholderEl.style.display = "flex";
+    return;
+  }
+
+  imgEl.style.display = "block";
+  placeholderEl.style.display = "none";
+  imgEl.src = url;
+
+  imgEl.onerror = () => {
+    stage++;
+    if (stage === 1 && backupUrl) {
       imgEl.src = backupUrl;
+    } else {
+      imgEl.style.display = "none";
+      placeholderEl.style.display = "flex";
     }
-  });
+  };
 }
 
 /** 建立一張作品便條紙卡片 DOM */
@@ -52,7 +71,11 @@ function createNoteCardEl(art) {
     <span class="sticker"></span>
     <span class="tape-corner"></span>
     <div class="note-thumb-wrap">
-      <img loading="lazy" alt="${escapeHtml(art.StudentName)} 的 AI 作品" src="${escapeHtml(art.ImageURL)}">
+      <img loading="lazy" alt="${escapeHtml(art.StudentName)} 的 AI 作品">
+      <div class="no-image-placeholder">
+        <span class="no-image-icon">🖼️</span>
+        <span>尚無圖片</span>
+      </div>
     </div>
     <div class="note-meta-row">
       <span class="note-student">${escapeHtml(art.StudentName)}</span>
@@ -73,7 +96,8 @@ function createNoteCardEl(art) {
   `;
 
   const img = card.querySelector("img");
-  attachImageFallback(img, art.DriveBackupURL);
+  const placeholder = card.querySelector(".no-image-placeholder");
+  setupImageWithFallback(img, placeholder, art.ImageURL, art.DriveBackupURL);
 
   card.addEventListener("click", () => openArtworkModal(art));
   card.addEventListener("keydown", (e) => {
@@ -172,6 +196,10 @@ function ensureModalExists() {
       <div class="modal-grid">
         <div class="modal-img-wrap">
           <img id="modal-img" alt="">
+          <div class="no-image-placeholder" id="modal-img-placeholder">
+            <span class="no-image-icon">🖼️</span>
+            <span>這件作品尚無圖片</span>
+          </div>
         </div>
         <div>
           <h2 class="modal-title" id="modal-title"></h2>
@@ -252,9 +280,9 @@ async function openArtworkModal(art) {
   const overlay = document.getElementById("artwork-modal");
 
   const img = document.getElementById("modal-img");
-  img.src = art.ImageURL;
+  const imgPlaceholder = document.getElementById("modal-img-placeholder");
   img.alt = art.StudentName + " 的 AI 作品";
-  attachImageFallback(img, art.DriveBackupURL);
+  setupImageWithFallback(img, imgPlaceholder, art.ImageURL, art.DriveBackupURL);
 
   document.getElementById("modal-title").textContent = art.StudentName;
   document.getElementById("modal-sub").textContent = `${art.ClassName} · ${new Date(

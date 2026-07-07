@@ -169,8 +169,8 @@ function handleSubmit_(body) {
   const description = String(body.description || "").trim();
   const tags = String(body.tags || "").trim();
 
-  if (!studentName || !imageUrl || !prompt) {
-    return jsonOut_({ error: "姓名、圖片連結、Prompt 為必填欄位" });
+  if (!studentName) {
+    return jsonOut_({ error: "姓名為必填欄位" });
   }
 
   // 1. 檢查授權名單
@@ -193,12 +193,14 @@ function handleSubmit_(body) {
 
   const autoApprove = parseBoolean_(matched.AutoApprove);
 
-  // 2. 備份圖片到 Google Drive（失敗也不阻擋投稿，只是 DriveBackupURL 留空）
+  // 2. 備份圖片到 Google Drive（沒有圖片連結，或備份失敗，都不阻擋投稿）
   let backupUrl = "";
-  try {
-    backupUrl = backupImageToDrive_(imageUrl, studentName);
-  } catch (backupErr) {
-    backupUrl = "";
+  if (imageUrl) {
+    try {
+      backupUrl = backupImageToDrive_(imageUrl, studentName);
+    } catch (backupErr) {
+      backupUrl = "";
+    }
   }
 
   // 3. 寫入 Artworks 分頁

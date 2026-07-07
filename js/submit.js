@@ -25,14 +25,14 @@ document.addEventListener("DOMContentLoaded", () => {
       tags: document.getElementById("field-tags").value.trim(),
     };
 
-    if (!payload.studentName || !payload.imageUrl || !payload.prompt) {
-      showMsg("error", "請填寫姓名、Imgur 圖片連結與 Prompt 後再送出。");
+    if (!payload.studentName) {
+      showMsg("error", "請至少填寫姓名後再送出。");
       return;
     }
 
     submitBtn.disabled = true;
     submitBtn.textContent = "上傳中，請稍候...";
-    showMsg("pending", "作品傳送中，圖片備份需要一點時間，請不要關閉頁面...");
+    showMsg("pending", "作品傳送中，請稍候，若有附圖片會需要一點時間備份...");
 
     try {
       const res = await Api.submitArtwork(payload);
