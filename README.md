@@ -153,7 +153,21 @@ const CONFIG = {
 
 ---
 
-## 運作方式一覽
+## 即時更新（Live Update）是怎麼做到的？
+
+**不需要換平台**，GitHub Pages / Netlify / Vercel 三個原本推薦的免費靜態平台都能直接支援這個功能。因為這裡用的不是「動態網站」等級的技術（伺服器渲染、WebSocket），而是**前端定期輪詢（polling）**：
+
+- **畫廊頁**：每 15 秒重新向 Apps Script 要一次最新作品清單，跟畫面上現有的資料比對：
+  - 有新投稿 → 淡入插入一張新卡片（若符合目前的篩選條件）
+  - 有作品被下架 → 該卡片會從畫面移除
+  - 有讚數變化 → 只更新數字，不會整個重新渲染，也不會打斷你正在滑的畫面
+- **首頁精選區**：每 20 秒同步一次讚數，但**不會**重新抽選精選作品，避免瀏覽中版面跳動。
+- **作品詳細 Modal**：開著的時候每 8 秒檢查一次留言是否有更新，並且如果有其他人剛好按讚，也會同步更新 modal 裡顯示的讚數。
+- 切到別的瀏覽器分頁時（`document.hidden`），輪詢會自動暫停；切回來的瞬間會立刻補抓一次最新資料，不會浪費 Apps Script 的每日執行配額。
+
+如果你想要更「真即時」（例如按讚的瞬間所有人畫面立刻跳動，而不是等最多 15 秒），可以之後再加一層真正的推播服務（例如免費方案的 Firebase Realtime Database 或 Pusher），但那樣會多一個要維護的免費帳號，對班級規模的使用情境來說，目前的輪詢方式已經足夠流暢，也維持了「只需要 Google Sheet + Apps Script」的最簡單架構。
+
+
 
 - **首頁 / 畫廊頁**：呼叫 `GET {APPS_SCRIPT_URL}` 取得所有 `Approved=TRUE` 的作品 JSON。
 - **作品詳細 Modal**：呼叫 `GET {APPS_SCRIPT_URL}?action=comments&artworkId=xxx` 取得該作品的留言。
@@ -198,5 +212,3 @@ const CONFIG = {
 ```
 
 字型使用 Google Fonts：`Ma Shan Zheng`（中文粉筆標題）、`Zhi Mang Xing`（中文手寫便條字）、`Kalam`（英文粉筆字）、`Noto Sans TC`（中文正文）。
-#   L u n - A r t - G a l l e r y  
- 

@@ -45,6 +45,7 @@ function createNoteCardEl(art) {
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.setAttribute("aria-label", `查看 ${art.StudentName} 的作品`);
+  card.dataset.artworkId = art.ID; // 供即時更新時查找對應卡片
 
   card.innerHTML = `
     <span class="pin"></span>
@@ -84,6 +85,51 @@ function createNoteCardEl(art) {
   return card;
 }
 
+/** 幫新加入的卡片加一個短暫的「剛剛送達」淡入強調效果 */
+function flashNewCard(cardEl) {
+  cardEl.classList.add("note-card-new");
+  setTimeout(() => cardEl.classList.remove("note-card-new"), 1600);
+}
+
+/** 更新畫面上所有符合此 ID 的卡片讚數顯示（首頁精選區、畫廊區都可能同時存在） */
+function updateNoteCardLikesInDom(artworkId, likes) {
+  document.querySelectorAll(`.note-card[data-artwork-id="${artworkId}"] .like-count`).forEach((el) => {
+    el.textContent = `♥ ${Number(likes)}`;
+    el.classList.add("like-count-pulse");
+    setTimeout(() => el.classList.remove("like-count-pulse"), 700);
+  });
+}
+
+/* ===================================================================
+   輪詢器：定期呼叫 fn，分頁切到背景時自動暫停，切回來立刻補一次
+   =================================================================== */
+function createPoller(fn, intervalMs) {
+  let timer = null;
+
+  async function tick() {
+    if (document.hidden) return;
+    try {
+      await fn();
+    } catch (err) {
+      console.warn("輪詢更新失敗：", err.message);
+    }
+  }
+
+  function onVisibilityChange() {
+    if (!document.hidden) tick();
+  }
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  timer = setInterval(tick, intervalMs);
+
+  return {
+    stop() {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    },
+  };
+}
+
 /** 渲染狀態訊息（載入中 / 錯誤 / 空清單） */
 function renderStateMessage(container, { type, text, onRetry }) {
   container.innerHTML = "";
@@ -111,6 +157,8 @@ function renderStateMessage(container, { type, text, onRetry }) {
    Modal：作品詳細頁
    =================================================================== */
 let currentModalArtwork = null;
+let modalPoller = null;
+let lastCommentSignature = "";
 
 function ensureModalExists() {
   if (document.getElementById("artwork-modal")) return;
@@ -168,8 +216,19 @@ function closeModal() {
   const overlay = document.getElementById("artwork-modal");
   if (overlay) overlay.classList.remove("open");
   currentModalArtwork = null;
+  if (modalPoller) {
+    modalPoller.stop();
+    modalPoller = null;
+  }
 }
 
+/** 當畫廊 / 首頁輪詢偵測到讚數變化時，如果剛好開著這件作品的 modal，也同步更新數字 */
+function syncModalLikesIfOpen(artworkId, likes) {
+  if (!currentModalArtwork || currentModalArtwork.ID !== artworkId) return;
+  currentModalArtwork.Likes = likes;
+  const el = document.getElementById("modal-like-count");
+  if (el) el.textContent = `${Number(likes)} 人按讚`;
+}
 function likedArtworkIds() {
   try {
     return JSON.parse(localStorage.getItem("likedArtworkIds") || "[]");
@@ -228,12 +287,28 @@ async function openArtworkModal(art) {
 
   try {
     const res = await Api.getComments(art.ID);
+    lastCommentSignature = commentSignature_(res.comments || []);
     renderComments(res.comments || []);
   } catch (err) {
     document.getElementById(
       "modal-comments-list"
     ).innerHTML = `<div style="color:#a8402f;font-size:0.88rem;">留言載入失敗：${escapeHtml(err.message)}</div>`;
   }
+
+  if (modalPoller) modalPoller.stop();
+  modalPoller = createPoller(async () => {
+    if (!currentModalArtwork || currentModalArtwork.ID !== art.ID) return;
+    const res = await Api.getComments(art.ID);
+    const sig = commentSignature_(res.comments || []);
+    if (sig !== lastCommentSignature) {
+      lastCommentSignature = sig;
+      renderComments(res.comments || []);
+    }
+  }, 8000);
+}
+
+function commentSignature_(comments) {
+  return comments.length + "|" + (comments[comments.length - 1]?.Timestamp || "");
 }
 
 function renderComments(comments) {
@@ -264,10 +339,7 @@ async function handleLikeClick(art) {
     document.getElementById("modal-like-count").textContent = `${newCount} 人按讚`;
     likeBtn.textContent = "已按讚";
     markArtworkLiked(art.ID);
-    // 同步更新畫面上對應卡片的讚數
-    document.querySelectorAll(".note-card").forEach((card) => {
-      // 由呼叫端各自處理更精細的同步，這裡先留給頁面自己刷新
-    });
+    updateNoteCardLikesInDom(art.ID, newCount); // 同步更新畫面上對應卡片的讚數
   } catch (err) {
     likeBtn.disabled = false;
     likeBtn.textContent = "♥ 按讚";
@@ -292,6 +364,7 @@ async function handleCommentSubmit(e) {
     msgEl.className = "form-msg show success";
     msgEl.textContent = "留言送出成功！";
     const res = await Api.getComments(currentModalArtwork.ID);
+    lastCommentSignature = commentSignature_(res.comments || []);
     renderComments(res.comments || []);
   } catch (err) {
     msgEl.className = "form-msg show error";
