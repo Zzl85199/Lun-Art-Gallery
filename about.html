@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>關於 - OO班 AI 創作畫廊</title>
+<meta name="description" content="關於這個 AI 創作教學專案的理念與參與者。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Kalam:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="blackboard-bg">
+
+<header class="site-header blackboard-bg">
+  <div class="container">
+    <a href="index.html" class="brand">🖍️ OO班<small>AI GALLERY</small></a>
+    <nav class="nav-tabs">
+      <a class="nav-tab" data-page="home" href="index.html">首頁</a>
+      <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
+      <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
+      <a class="nav-tab" data-page="about" href="about.html">關於</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container about-wrap">
+  <h1>關於這個公佈欄</h1>
+
+  <div class="about-card">
+    <h3>🎯 教學理念</h3>
+    <p>
+      這個網站的目的，不是展示「AI 畫得多漂亮」，而是讓學生練習「怎麼跟 AI 好好溝通」。
+      一張好的作品背後，往往是好幾次修改 Prompt 的過程——加一個形容詞、換一個構圖描述、
+      調整光線或風格關鍵字，畫面就會完全不同。我們希望透過公開展示 Prompt 與創作說明，
+      讓同學互相學習「怎麼把一個想法說清楚」，這也是這個時代很重要的表達能力。
+    </p>
+  </div>
+
+  <div class="about-card">
+    <h3>🏫 參與班級</h3>
+    <p>目前參與這個計畫的班級，會顯示在畫廊頁的班級篩選清單中。歡迎其他班級的老師也加入投稿名單！</p>
+  </div>
+
+  <div class="about-card">
+    <h3>🖍️ 指導老師</h3>
+    <p>本專案由授課老師發起與維護，負責審核投稿、管理授權名單，並在課堂中帶領學生討論 Prompt 撰寫技巧。</p>
+  </div>
+
+  <div class="about-card">
+    <h3>🔧 技術說明</h3>
+    <p>
+      本網站為純靜態網頁，資料來源是一份 Google Sheet，透過 Google Apps Script 作為免費後端，
+      圖片則存放在 Imgur 並自動備份到 Google Drive，確保連結不易失效。完全不需要租用伺服器或資料庫。
+    </p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="container">
+    © <span id="footer-year"></span> OO班 AI 創作畫廊・本網站由學生與老師共同維護
+  </div>
+</footer>
+
+<script src="js/config.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".nav-tab").forEach((el) => {
+      el.classList.toggle("active", el.dataset.page === "about");
+    });
+    document.getElementById("footer-year").textContent = new Date().getFullYear();
+  });
+</script>
+</body>
+</html>

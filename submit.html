@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我要投稿 - OO班 AI 創作畫廊</title>
+<meta name="description" content="投稿你的 AI 創作作品到班級畫廊。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Kalam:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="blackboard-bg">
+
+<header class="site-header blackboard-bg">
+  <div class="container">
+    <a href="index.html" class="brand">🖍️ OO班<small>AI GALLERY</small></a>
+    <nav class="nav-tabs">
+      <a class="nav-tab" data-page="home" href="index.html">首頁</a>
+      <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
+      <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
+      <a class="nav-tab" data-page="about" href="about.html">關於</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container submit-wrap">
+  <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);text-align:center;">我要投稿</h1>
+
+  <div class="steps-note">
+    <h3>投稿三步驟</h3>
+    <ol>
+      <li>把你的 AI 作品圖片上傳到 <a href="https://imgur.com/upload" target="_blank" rel="noopener" style="color:#3f7ea6;text-decoration:underline;">Imgur</a>（不需註冊帳號也可以上傳），上傳後複製「圖片直接連結」（網址結尾通常是 .jpg / .png）。</li>
+      <li>填寫下方表單，貼上圖片連結、你使用的 AI 工具、Prompt 與創作說明。</li>
+      <li>送出後，若老師已將你設定為自動上架，作品會馬上出現在畫廊；否則會先進入審核，通過後才會公開。</li>
+    </ol>
+  </div>
+
+  <form class="submit-form" id="submit-form">
+    <div class="form-row">
+      <label for="field-name">姓名 *</label>
+      <input type="text" id="field-name" required maxlength="20" placeholder="例如：王小明">
+    </div>
+
+    <div class="form-row">
+      <label for="field-class">班級 *</label>
+      <select id="field-class" required></select>
+    </div>
+
+    <div class="form-row">
+      <label for="field-image">Imgur 圖片連結 *</label>
+      <input type="url" id="field-image" required placeholder="https://i.imgur.com/xxxxxxx.jpg">
+      <div class="form-hint">請貼「圖片直接連結」，不是 Imgur 頁面網址。老師端會自動備份一份到 Google Drive。</div>
+    </div>
+
+    <div class="form-row">
+      <label for="field-tool">使用的 AI 工具 *</label>
+      <select id="field-tool" required></select>
+    </div>
+
+    <div class="form-row">
+      <label for="field-prompt">AI Prompt *</label>
+      <textarea id="field-prompt" required placeholder="貼上你輸入給 AI 的完整 Prompt..."></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="field-desc">創作說明</label>
+      <textarea id="field-desc" placeholder="說說你想表達什麼、修改了幾次、遇到什麼困難..."></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="field-tags">標籤（用逗號分隔）</label>
+      <input type="text" id="field-tags" placeholder="例如：奇幻, 風景, 貓咪">
+    </div>
+
+    <button type="submit" class="btn btn-pin" style="width:100%;">送出投稿</button>
+    <div class="form-msg" id="submit-msg"></div>
+  </form>
+</div>
+
+<footer class="site-footer">
+  <div class="container">
+    © <span id="footer-year"></span> OO班 AI 創作畫廊・本網站由學生與老師共同維護
+  </div>
+</footer>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/main.js"></script>
+<script src="js/submit.js"></script>
+</body>
+</html>
