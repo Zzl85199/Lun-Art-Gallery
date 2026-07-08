@@ -7,7 +7,7 @@
 <meta name="description" content="投稿你的 AI 創作作品到班級畫廊。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=ZCOOL+QingKe+HuangYou&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=WDXL+Lubrifont+TC&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="blackboard-bg">
@@ -25,34 +25,49 @@
 </header>
 
 <div class="container submit-wrap">
-  <span class="hero-decor d1" style="font-size:1.8rem;">✏️</span>
-  <span class="hero-decor d2" style="font-size:1.6rem;">🌟</span>
-  <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);text-align:center;">我要投稿</h1>
+  <div class="page-hero-row">
+    <span class="page-hero-emoji" aria-hidden="true">✏️</span>
+    <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);text-align:center;">我要投稿</h1>
+    <span class="page-hero-emoji" aria-hidden="true">🌟</span>
+  </div>
 
   <div class="steps-note">
     <h3>投稿三步驟</h3>
     <ol>
-      <li>把你的 AI 作品圖片上傳到 <a href="https://imgur.com/upload" target="_blank" rel="noopener" style="color:#3f7ea6;text-decoration:underline;">Imgur</a>（不需註冊帳號也可以上傳），上傳後複製「圖片直接連結」（網址結尾通常是 .jpg / .png）。</li>
-      <li>填寫下方表單，貼上圖片連結、你使用的 AI 工具、Prompt 與創作說明。</li>
+      <li>把你的 AI 作品圖片上傳到 <a href="https://imgur.com/upload" target="_blank" rel="noopener" style="color:#3f7ea6;text-decoration:underline;">Imgur</a>（不需註冊帳號也可以上傳）。上傳完成後，<b>不要</b>複製網址列上 <code>imgur.com/...</code> 的網址，那是「相簿頁面」網址；請在圖片上按右鍵 →「複製圖片網址 / Copy image address」，取得結尾是 .jpg / .png / .gif 的「圖片直接連結」（通常開頭是 <code>i.imgur.com</code>）。</li>
+      <li>填寫下方表單：先選班級，再選你的姓名，並貼上圖片直接連結、使用的 AI 工具、Prompt 與創作說明。</li>
       <li>送出後，若老師已將你設定為自動上架，作品會馬上出現在畫廊；否則會先進入審核，通過後才會公開。</li>
     </ol>
+    <div class="form-hint" style="margin-top:10px;">
+      ⚠️ 小提醒：Imgur 的圖片若長時間（約 6 個月）沒有人瀏覽，可能會被系統自動清除，連結也可能因此失效。
+      別擔心——你投稿後，網站會自動把圖片備份一份到老師的 Google Drive，就算 Imgur 那邊的圖不見了，畫廊裡的圖還是看得到。
+    </div>
   </div>
 
   <form class="submit-form" id="submit-form">
     <div class="form-row">
-      <label for="field-name">姓名 *</label>
-      <input type="text" id="field-name" required maxlength="20" placeholder="例如：王小明">
-    </div>
-
-    <div class="form-row">
       <label for="field-class">班級 *</label>
-      <select id="field-class" required></select>
+      <select id="field-class" required disabled>
+        <option value="">載入班級名單中...</option>
+      </select>
     </div>
 
     <div class="form-row">
-      <label for="field-image">Imgur 圖片連結（選填）</label>
-      <input type="url" id="field-image" placeholder="https://i.imgur.com/xxxxxxx.jpg">
-      <div class="form-hint">請貼「圖片直接連結」，不是 Imgur 頁面網址。老師端會自動備份一份到 Google Drive。若還沒有圖片，也可以先空著，之後再麻煩老師補上。</div>
+      <label for="field-name">姓名 *</label>
+      <select id="field-name" required disabled>
+        <option value="">請先選擇班級</option>
+      </select>
+      <div class="form-hint" id="roster-fallback-hint" style="display:none;">
+        名單載入失敗，暫時開放手動輸入姓名，老師收到投稿後仍會核對授權名單。
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="field-image">Imgur 圖片直接連結 *</label>
+      <input type="url" id="field-image" required placeholder="https://i.imgur.com/xxxxxxx.jpg">
+      <div class="form-hint">請貼「圖片直接連結」（開頭通常是 i.imgur.com），不是 imgur.com 的相簿／頁面網址。老師端會自動備份一份到 Google Drive。</div>
+      <div class="image-check" id="image-check"></div>
+      <img id="image-preview" class="image-preview" alt="圖片預覽" style="display:none;">
     </div>
 
     <div class="form-row">

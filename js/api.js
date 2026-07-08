@@ -50,6 +50,11 @@ const Api = {
     return this._get({ action: "list" });
   },
 
+  /** 取得「班級 → 學生姓名」名單，用於投稿頁連動下拉選單 */
+  getRoster() {
+    return this._get({ action: "roster" });
+  },
+
   /** 取得單件作品的留言 */
   getComments(artworkId) {
     return this._get({ action: "comments", artworkId });

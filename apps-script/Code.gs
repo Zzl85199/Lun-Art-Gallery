@@ -126,6 +126,22 @@ function doGet(e) {
       return jsonOut_({ comments });
     }
 
+    if (action === "roster") {
+      // 提供「班級 → 學生姓名」名單給投稿頁的連動下拉選單使用。
+      // 老師只要在 Google Sheet 的 AuthorizedUsers 分頁增刪列即可，網站會自動同步，
+      // 不需要改程式碼或重新部署。只回傳 Status 為 active 的人，且不外流 AutoApprove 欄位。
+      const usersSheet = getSheet_(CONFIG.SHEET_USERS);
+      const users = sheetToObjects_(usersSheet);
+      const roster = users
+        .filter((u) => String(u.Status).trim().toLowerCase() === "active")
+        .map((u) => ({
+          className: String(u.ClassName).trim(),
+          studentName: String(u.StudentName).trim(),
+        }))
+        .filter((u) => u.className && u.studentName);
+      return jsonOut_({ roster });
+    }
+
     // 預設：回傳所有已上架作品
     const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
     const all = sheetToObjects_(sheet);

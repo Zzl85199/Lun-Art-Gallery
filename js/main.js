@@ -99,6 +99,8 @@ function createNoteCardEl(art) {
   const placeholder = card.querySelector(".no-image-placeholder");
   setupImageWithFallback(img, placeholder, art.ImageURL, art.DriveBackupURL);
 
+  attachTiltEffect(card);
+
   card.addEventListener("click", () => openArtworkModal(art));
   card.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -108,6 +110,33 @@ function createNoteCardEl(art) {
   });
 
   return card;
+}
+
+/**
+ * 讓便條紙卡片跟著滑鼠做真正的 3D 傾斜效果，像從公佈欄上被拿起來端詳一樣。
+ * 使用 pointermove（涵蓋滑鼠與觸控筆），觸控點按則交給既有的 CSS hover 效果。
+ */
+function attachTiltEffect(card) {
+  const MAX_TILT = 10; // 度數上限，避免歪太誇張
+  const baseRotate = parseFloat(getComputedStyle(card).getPropertyValue("--base-rotate")) || 0;
+
+  function handleMove(e) {
+    if (e.pointerType === "touch") return;
+    const rect = card.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;  // 0~1
+    const y = (e.clientY - rect.top) / rect.height;  // 0~1
+    const rotateY = (x - 0.5) * MAX_TILT * 2;
+    const rotateX = (0.5 - y) * MAX_TILT * 2;
+    card.style.transform = `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px) scale(1.03)`;
+  }
+
+  function reset() {
+    card.style.transform = "";
+  }
+
+  card.addEventListener("pointermove", handleMove);
+  card.addEventListener("pointerleave", reset);
+  card.addEventListener("pointercancel", reset);
 }
 
 /** 幫新加入的卡片加一個短暫的「剛剛送達」淡入強調效果 */

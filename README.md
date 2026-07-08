@@ -171,6 +171,7 @@ const CONFIG = {
 
 - **首頁 / 畫廊頁**：呼叫 `GET {APPS_SCRIPT_URL}` 取得所有 `Approved=TRUE` 的作品 JSON。
 - **作品詳細 Modal**：呼叫 `GET {APPS_SCRIPT_URL}?action=comments&artworkId=xxx` 取得該作品的留言。
+- **投稿頁 — 班級/姓名下拉選單**：呼叫 `GET {APPS_SCRIPT_URL}?action=roster`，回傳 `AuthorizedUsers` 分頁中 `Status=Active` 的 `{className, studentName}` 清單。投稿頁會用這份清單動態組出「先選班級、再選姓名」的連動下拉選單，所以**老師要新增/刪除班級或學生，只要直接編輯 Google Sheet 的 `AuthorizedUsers` 分頁即可**，不需要改任何程式碼或重新部署網站。若這個 API 連不上，投稿頁會自動退回成「固定班級清單（`js/config.js` 的 `CLASSES`）+ 手動輸入姓名」的備援模式。
 - **投稿頁**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "submit", studentName, className, imageUrl, aiTool, prompt, description, tags }`。
   - 後端會先比對 `AuthorizedUsers` 分頁確認 `Status=Active`。
   - 用 `UrlFetchApp` 抓取 Imgur 圖片，備份一份到 Google Drive，寫入 `DriveBackupURL`。
@@ -178,6 +179,8 @@ const CONFIG = {
 - **按讚**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "like", artworkId }`，該筆資料的 `Likes` +1。前端用 `localStorage` 記錄已按讚的作品 ID，避免同一裝置重複按讚。
 - **留言**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "comment", artworkId, commenterName, comment }`，寫入 `Comments` 分頁。
 - **圖片備援**：前端 `<img>` 的 `onerror` 事件會自動切換成 `DriveBackupURL`，Imgur 掛掉也不會斷圖。
+
+> ⚠️ 這個版本的 `Code.gs` 新增了 `action=roster`。如果你的 Google Sheet 綁定的 Apps Script 是舊版程式碼，記得要把新的 `apps-script/Code.gs` 整份貼上覆蓋，然後「部署 → 管理部署作業 → 編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」。這樣網址（`/exec`）不會改變，`js/config.js` 也不用再改一次。
 
 ---
 
