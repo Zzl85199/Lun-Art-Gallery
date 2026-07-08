@@ -29,8 +29,8 @@ const CONFIG = {
   // （在資料夾網址 https://drive.google.com/drive/folders/XXXXXXXX 中，XXXXXXXX 就是 ID）
   DRIVE_BACKUP_FOLDER_ID: "PASTE_YOUR_DRIVE_FOLDER_ID_HERE",
   // 投票接龍遊戲設定
-  STORY_ROUND_HOURS: 24,        // 每一輪投票開放幾小時，時間到自動結算、選出得票最高的作品接上故事
-  STORY_CANDIDATES_PER_ROUND: 4, // 每一輪從「還沒被選進故事」的已上架作品中，隨機抽幾張讓大家投票
+  STORY_CANDIDATES_PER_ROUND: 4,   // 每一輪從「還沒被選進故事」的已上架作品中，隨機抽幾張讓大家投票
+  STORY_DAILY_ROLLOVER_HOUR: 12,   // 沒有手動觸發新一輪的話，預設每天固定在這個時間（24 小時制，GMT+8）自動結算、開下一輪
 };
 
 const ARTWORK_HEADERS = [
@@ -334,14 +334,19 @@ function handleComment_(body) {
 /* =========================================================================
    故事接龍投票遊戲（StoryChain）
    -------------------------------------------------------------------------
-   玩法：每一輪從「還沒被選進故事」的已上架作品中隨機抽幾張當候選，
-   大家投票；時間到（STORY_ROUND_HOURS 小時）自動結算，得票最高的作品
-   接進故事鏈，然後自動開下一輪。狀態存在 PropertiesService（不用另外
-   開分頁），故事鏈本身則寫進 Google Sheet 的 StoryChain 分頁，方便老師
-   直接在 Sheet 上查看完整故事順序。
+   玩法：每一輪從「還沒被選進故事」的已上架作品中隨機抽幾張當候選，大家投票。
+   結算新一輪「不是」由訪客打開頁面觸發的，而是完全由後台控制：
+     1. 老師可以隨時在 Apps Script 編輯器手動執行 advanceStoryRound()，立刻結算
+        目前這一輪、開下一輪。
+     2. 如果都沒有手動觸發，系統會用「時間驅動觸發條件」在每天固定時間
+        （CONFIG.STORY_DAILY_ROLLOVER_HOUR，預設中午 12:00，GMT+8）自動執行
+        同一個函式。設定方式請見 installDailyStoryTrigger()。
+   狀態存在 PropertiesService（不用另外開分頁），故事鏈本身則寫進 Google Sheet
+   的 StoryChain 分頁，方便老師直接在 Sheet 上查看完整故事順序。
    ========================================================================= */
 
 const STORY_STATE_KEY = "STORY_STATE_V1";
+const STORY_TAIPEI_OFFSET_MS = 8 * 3600 * 1000; // GMT+8，台灣不使用日光節約時間，固定時差即可
 
 function getStoryState_() {
   const raw = PropertiesService.getScriptProperties().getProperty(STORY_STATE_KEY);
@@ -371,10 +376,29 @@ function shuffle_(arr) {
   return a;
 }
 
+/** 計算「從某個時間點之後，下一次 GMT+8 每天固定結算時間」的 ISO 字串，純數學算，
+ *  跟這個 Google 專案本身的時區設定無關（只有實際自動觸發的時間，才需要專案時區設定正確）。
+ */
+function getNextRolloverIso_(fromDate) {
+  const taipeiMs = fromDate.getTime() + STORY_TAIPEI_OFFSET_MS;
+  const t = new Date(taipeiMs);
+  const y = t.getUTCFullYear();
+  const m = t.getUTCMonth();
+  const d = t.getUTCDate();
+  let candidateUtcMs =
+    Date.UTC(y, m, d, CONFIG.STORY_DAILY_ROLLOVER_HOUR, 0, 0) - STORY_TAIPEI_OFFSET_MS;
+  if (candidateUtcMs <= fromDate.getTime()) {
+    candidateUtcMs += 24 * 3600 * 1000; // 已經過了今天的結算時間，改成明天
+  }
+  return new Date(candidateUtcMs).toISOString();
+}
+
 /** 確保目前有一輪「進行中」的投票；如果沒有（第一次啟用、或上一輪剛結算完），
  *  就從還沒被選進故事鏈的已上架作品中，隨機抽幾張開新的一輪。
  *  如果已經沒有還沒用過的作品了，就把 candidates 設為空陣列（代表故事暫時完結，
  *  之後只要有新投稿通過審核，下次呼叫就會自動再開新的一輪）。
+ *  注意：這個函式只負責「補開新的一輪」，不會主動把進行中的一輪強制結束——
+ *  結束一輪要嘛老師手動觸發 advanceStoryRound()，要嘛靠每天固定時間的自動觸發條件。
  */
 function ensureRoundActive_() {
   let state = getStoryState_();
@@ -391,7 +415,6 @@ function ensureRoundActive_() {
   state = {
     roundNumber: state ? state.roundNumber + 1 : 1,
     startTime: new Date().toISOString(),
-    durationHours: CONFIG.STORY_ROUND_HOURS,
     candidates: candidates,
     votes: {}, // { artworkId: [voterId, ...] }
   };
@@ -399,31 +422,25 @@ function ensureRoundActive_() {
   return state;
 }
 
-/** 如果目前這一輪時間到了，結算出勝出的作品、接進故事鏈，並開下一輪。
- *  用 LockService 避免多個使用者同時打開網頁時重複結算兩次。
+/** 真正的「結算目前這一輪」邏輯：算出票數最高的候選、接進故事鏈、開下一輪。
+ *  不管時間到了沒，呼叫就會立刻執行——時間判斷交給呼叫端（daily trigger）或完全不判斷（手動觸發）。
  */
-function checkAndFinalizeIfExpired_() {
-  let state = getStoryState_();
-  if (!state || !state.candidates || state.candidates.length === 0) return state;
-
-  const endsAt = new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000;
-  if (Date.now() < endsAt) return state;
-
+function finalizeCurrentRound_() {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    // 重新讀一次，避免自己在等鎖的時候，別人已經搶先結算過了
-    state = getStoryState_();
-    if (!state || !state.candidates || state.candidates.length === 0) return state;
-    const stillEndsAt = new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000;
-    if (Date.now() < stillEndsAt) return state;
+    let state = getStoryState_();
+    if (!state || !state.candidates || state.candidates.length === 0) {
+      // 目前沒有進行中的投票，可能全部作品都已經接完故事、或還沒開始過，
+      // 嘗試看看有沒有新投稿可以開新的一輪就好，沒有結算的必要
+      return ensureRoundActive_();
+    }
 
     const approved = getApprovedArtworks_();
     const byId = {};
     approved.forEach((a) => (byId[String(a.ID)] = a));
 
     // 找出票數最高的候選；沒人投票的話就隨機選一張，故事還是要繼續走下去
-    let winnerId = null;
     let bestVotes = -1;
     let tied = [];
     state.candidates.forEach((id) => {
@@ -435,7 +452,7 @@ function checkAndFinalizeIfExpired_() {
         tied.push(id);
       }
     });
-    winnerId = shuffle_(tied)[0]; // 平票就隨機挑一個，避免卡住
+    const winnerId = shuffle_(tied)[0];
 
     const winnerArt = byId[winnerId];
     if (winnerArt) {
@@ -456,11 +473,41 @@ function checkAndFinalizeIfExpired_() {
     // 清空目前這一輪，讓 ensureRoundActive_ 開新的一輪
     state.candidates = [];
     saveStoryState_(state);
-    state = ensureRoundActive_();
-    return state;
+    return ensureRoundActive_();
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * 🔧 老師專用：手動立刻結算目前這一輪、開下一輪。
+ * 在 Apps Script 編輯器上方的函式下拉選單選這個函式、按「執行」，
+ * 不用等時間到、也不用等每天固定的自動觸發時間。
+ */
+function advanceStoryRound() {
+  ensureRoundActive_();
+  finalizeCurrentRound_();
+}
+
+/**
+ * 🔧 老師專用（只要設定一次）：安裝「每天固定時間自動結算」的觸發條件。
+ * 在 Apps Script 編輯器上方的函式下拉選單選這個函式、按「執行」一次即可。
+ * 之後如果都沒有手動執行 advanceStoryRound()，系統就會在每天 GMT+8
+ * CONFIG.STORY_DAILY_ROLLOVER_HOUR 點左右自動結算、開下一輪。
+ *
+ * ⚠️ 要讓自動觸發準時落在台灣時間中午，請先確認這個 Apps Script 專案的時區設定
+ * 是「(GMT+08:00) 台北時間」：編輯器左側齒輪圖示「專案設定」→「時區」。
+ */
+function installDailyStoryTrigger() {
+  // 先移除舊的同名觸發條件，避免重複執行兩次
+  ScriptApp.getProjectTriggers().forEach((t) => {
+    if (t.getHandlerFunction() === "advanceStoryRound") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("advanceStoryRound")
+    .timeBased()
+    .atHour(CONFIG.STORY_DAILY_ROLLOVER_HOUR)
+    .everyDays(1)
+    .create();
 }
 
 function buildStoryRoundPayload_(state) {
@@ -475,9 +522,9 @@ function buildStoryRoundPayload_(state) {
   const byId = {};
   approved.forEach((a) => (byId[String(a.ID)] = a));
 
-  const endsAt = new Date(
-    new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000
-  ).toISOString();
+  // 這個時間只是「預計」結算時間（下一次每天固定結算時刻），
+  // 老師如果手動觸發 advanceStoryRound()，實際結算時間可能會提早
+  const estimatedEndsAt = getNextRolloverIso_(new Date(state.startTime));
 
   const candidates = state.candidates
     .map((id) => {
@@ -498,35 +545,36 @@ function buildStoryRoundPayload_(state) {
   return {
     roundNumber: state.roundNumber,
     startTime: state.startTime,
-    durationHours: state.durationHours,
-    endsAt: endsAt,
+    estimatedEndsAt: estimatedEndsAt,
     candidates: candidates,
     finished: false,
   };
 }
 
-/** 提供給 doGet(action=story) 使用：確保有進行中的一輪、結算過期的一輪，再回傳完整故事鏈 + 目前這輪的狀態 */
+/** 提供給 doGet(action=story) 使用：確保有進行中的一輪（沒有的話補開一輪），
+ *  再回傳完整故事鏈 + 目前這輪的狀態。注意：這裡「不會」主動結算過期的一輪，
+ *  結算完全交給老師手動觸發或每天固定時間的自動觸發條件。
+ */
 function getStorySnapshot_() {
-  ensureRoundActive_();
-  const state = checkAndFinalizeIfExpired_();
+  const state = ensureRoundActive_();
   const chain = getStoryChainRows_();
   return { chain: chain, round: buildStoryRoundPayload_(state) };
 }
 
 /* -------------------------------------------------------------------------
    action = storyVote
+   （artworkId 給空字串代表「收回我的投票」，不投給任何候選）
    ------------------------------------------------------------------------- */
 function handleStoryVote_(body) {
   const voterId = String(body.voterId || "").trim();
   const artworkId = String(body.artworkId || "").trim();
-  if (!voterId || !artworkId) {
-    return jsonOut_({ error: "缺少必要欄位（voterId / artworkId）" });
+  if (!voterId) {
+    return jsonOut_({ error: "缺少必要欄位（voterId）" });
   }
 
-  ensureRoundActive_();
-  let state = checkAndFinalizeIfExpired_();
+  let state = ensureRoundActive_();
 
-  if (!state || !state.candidates.includes(artworkId)) {
+  if (artworkId && !state.candidates.includes(artworkId)) {
     return jsonOut_({
       error: "這一輪投票已經結束囉，頁面即將更新，請重新整理再投一次",
       round: buildStoryRoundPayload_(state),
@@ -537,20 +585,22 @@ function handleStoryVote_(body) {
   lock.waitLock(15000);
   try {
     state = getStoryState_();
-    if (!state || !state.candidates.includes(artworkId)) {
+    if (artworkId && (!state || !state.candidates.includes(artworkId))) {
       return jsonOut_({
         error: "這一輪投票已經結束囉，頁面即將更新，請重新整理再投一次",
         round: buildStoryRoundPayload_(state),
       });
     }
-    // 同一個人换票：先把他從所有候選的投票名單中移除，再加進新選的那張
+    // 不管是換票還是收回投票，都先把這個人從所有候選的投票名單中移除
     state.candidates.forEach((id) => {
       state.votes[id] = (state.votes[id] || []).filter((v) => v !== voterId);
     });
-    if (!state.votes[artworkId]) state.votes[artworkId] = [];
-    state.votes[artworkId].push(voterId);
+    if (artworkId) {
+      if (!state.votes[artworkId]) state.votes[artworkId] = [];
+      state.votes[artworkId].push(voterId);
+    }
     saveStoryState_(state);
-    return jsonOut_({ success: true, round: buildStoryRoundPayload_(state) });
+    return jsonOut_({ success: true, retracted: !artworkId, round: buildStoryRoundPayload_(state) });
   } finally {
     lock.releaseLock();
   }
@@ -577,14 +627,4 @@ function setupSheets_() {
   ensureSheet(CONFIG.SHEET_USERS, USER_HEADERS);
   ensureSheet(CONFIG.SHEET_COMMENTS, COMMENT_HEADERS);
   ensureSheet(CONFIG.SHEET_STORY_CHAIN, STORY_CHAIN_HEADERS);
-}
-
-/**
- * 這是給你在 Apps Script 編輯器手動執行用的入口。
- * 因為 setupSheets_ 結尾有底線（Apps Script 的「私有函式」命名慣例），
- * 編輯器上方的函式下拉選單「故意」不會顯示它，所以另外包一個沒有底線的函式，
- * 執行這個 initializeSheets 就可以了。
- */
-function initializeSheets() {
-  setupSheets_();
 }

@@ -1285,3 +1285,139 @@ button {
   cursor: default;
   opacity: 0.9;
 }
+
+/* ===================================================================
+   我的故事本（story.html 個人拖曳故事版，純前端 localStorage）
+   =================================================================== */
+
+.my-story-pool {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 8px 4px 16px;
+}
+
+.my-story-pool-item {
+  flex: 0 0 auto;
+  width: 100px;
+  cursor: grab;
+  position: relative;
+  text-align: center;
+}
+
+.my-story-pool-item img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  display: block;
+}
+
+.pool-item-add {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--pushpin-red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.pool-item-name {
+  font-size: 0.75rem;
+  margin-top: 4px;
+  color: #5b4f3f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-story-board {
+  background: var(--kraft);
+  border-radius: 10px;
+  padding: 14px 16px 18px;
+  margin-top: 20px;
+  border: 2px dashed var(--cork-dark);
+}
+
+.my-board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.my-board-title { font-family: var(--font-hand); font-size: 1.05rem; }
+
+.my-board-delete {
+  background: none;
+  border: none;
+  color: #7a2116;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.my-story-board-dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-height: 120px;
+  border-radius: 8px;
+  padding: 10px;
+  transition: background 0.15s ease;
+}
+
+.my-story-board-dropzone.is-drag-over {
+  background: rgba(63, 126, 166, 0.12);
+}
+
+.my-board-empty {
+  color: #8a7d68;
+  font-size: 0.85rem;
+  margin: auto;
+  padding: 20px;
+}
+
+.my-story-frame {
+  width: 140px;
+  background: var(--paper);
+  border-radius: var(--radius-note);
+  box-shadow: var(--shadow-soft);
+  padding: 8px 8px 10px;
+  position: relative;
+  cursor: grab;
+}
+
+.my-frame-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #7a2116;
+  color: #fff;
+  border: 2px solid var(--paper);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.my-frame-caption-input {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  padding: 4px 6px;
+  border: 1px solid var(--kraft-dark);
+  border-radius: 4px;
+  font-family: var(--font-body);
+}

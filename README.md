@@ -172,11 +172,15 @@ const CONFIG = {
 - **首頁 / 畫廊頁**：呼叫 `GET {APPS_SCRIPT_URL}` 取得所有 `Approved=TRUE` 的作品 JSON。
 - **作品詳細 Modal**：呼叫 `GET {APPS_SCRIPT_URL}?action=comments&artworkId=xxx` 取得該作品的留言。
 - **投稿頁 — 班級/姓名下拉選單**：呼叫 `GET {APPS_SCRIPT_URL}?action=roster`，回傳 `AuthorizedUsers` 分頁中 `Status=Active` 的 `{className, studentName}` 清單。投稿頁會用這份清單動態組出「先選班級、再選姓名」的連動下拉選單，所以**老師要新增/刪除班級或學生，只要直接編輯 Google Sheet 的 `AuthorizedUsers` 分頁即可**，不需要改任何程式碼或重新部署網站。若這個 API 連不上，投稿頁會自動退回成「固定班級清單（`js/config.js` 的 `CLASSES`）+ 手動輸入姓名」的備援模式。
-- **故事接龍（story.html）**：呼叫 `GET {APPS_SCRIPT_URL}?action=story` 取得目前故事鏈（`StoryChain` 分頁）與這一輪投票候選；呼叫 `POST` `{ action: "storyVote", voterId, artworkId }` 投票。
-  - 每一輪從「還沒被選進故事」的已上架作品中隨機抽 `CONFIG.STORY_CANDIDATES_PER_ROUND`（預設 4）張讓大家投票，投票時間 `CONFIG.STORY_ROUND_HOURS`（預設 24 小時，都在 Code.gs 最上面可以改）。
-  - 時間到，任何一個訪客打開頁面時就會觸發自動結算（用 `LockService` 避免同時被結算兩次）：得票最高的作品接進 `StoryChain` 分頁，然後自動開下一輪。
-  - 投票身分用瀏覽器 `localStorage` 產生的隨機 ID 辨識（同一輪可以換票，但沒有帳號登入機制，同一人開無痕視窗理論上可以多投，適合班級內信任情境使用，不建議用於正式比賽計票）。
-  - 已上架作品全部接完故事鏈後，頁面會顯示「暫時沒有新作品可以接龍」，等有新投稿通過審核就會自動繼續。
+- **故事接龍（story.html）**：呼叫 `GET {APPS_SCRIPT_URL}?action=story` 取得目前故事鏈（`StoryChain` 分頁）與這一輪投票候選；呼叫 `POST` `{ action: "storyVote", voterId, artworkId }` 投票，`artworkId` 傳空字串代表「收回這一票」。
+  - 每一輪從「還沒被選進故事」的已上架作品中隨機抽 `CONFIG.STORY_CANDIDATES_PER_ROUND`（預設 4）張讓大家投票。
+  - **結算新一輪完全由後台控制，不是訪客打開頁面觸發的**：
+    1. 老師隨時可以在 Apps Script 編輯器的函式下拉選單選 **`advanceStoryRound`**、按執行，立刻結算目前這一輪、開下一輪。
+    2. 如果都沒有手動觸發，系統會在每天固定時間（`CONFIG.STORY_DAILY_ROLLOVER_HOUR`，預設 12，也就是中午 12:00 GMT+8）自動執行同一件事——但這個「自動」需要老師先執行一次 **`installDailyStoryTrigger`** 幫忙安裝時間驅動觸發條件（只需要做一次）。
+    3. 執行 `installDailyStoryTrigger` 之前，請先確認這個 Apps Script 專案的時區是「(GMT+08:00) 台北時間」：編輯器左側齒輪圖示「專案設定」→「時區」，不然中午 12 點會對不準。
+  - 投票身分用瀏覽器 `localStorage` 產生的隨機 ID 辨識（同一輪可以換票、也可以收回投票，但沒有帳號登入機制，適合班級內信任情境使用，不建議用於正式比賽計票）。
+  - 已上架作品全部接完故事鏈後，頁面會顯示「暫時沒有新作品可以接龍」，等有新投稿通過審核就會自動繼續（下次有人手動或自動觸發 `advanceStoryRound` 時會偵測到）。
+  - **我的故事本**：故事接龍頁面下方還有一個完全獨立的個人拖曳小工具——把畫廊裡任何作品拖曳（或點圖片上的「＋」）排進最多 3 個「故事版」，可以幫每一格加一句話。這個功能**純前端、資料存在瀏覽器的 localStorage，不會送到 Google Sheet，也不會被其他人看到**，換裝置或清瀏覽器資料就會不見。
 - **投稿頁**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "submit", studentName, className, imageUrl, aiTool, prompt, description, tags }`。
   - 後端會先比對 `AuthorizedUsers` 分頁確認 `Status=Active`。
   - 用 `UrlFetchApp` 抓取 Imgur 圖片，備份一份到 Google Drive，寫入 `DriveBackupURL`。

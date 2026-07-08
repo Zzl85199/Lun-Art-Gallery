@@ -65,6 +65,11 @@ const Api = {
     return this._post({ action: "storyVote", voterId, artworkId });
   },
 
+  /** 收回我這一輪投的票（回到「還沒投票」的狀態） */
+  retractStoryVote(voterId) {
+    return this._post({ action: "storyVote", voterId, artworkId: "" });
+  },
+
   /** 取得單件作品的留言 */
   getComments(artworkId) {
     return this._get({ action: "comments", artworkId });

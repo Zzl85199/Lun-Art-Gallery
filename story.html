@@ -62,6 +62,30 @@
   </div>
 </section>
 
+<svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(180deg);">
+  <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
+</svg>
+
+<section class="board-section" style="background:var(--paper);">
+  <div class="container">
+    <h2 class="board-heading" style="font-size:1.6rem;">🎨 我的故事本</h2>
+    <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">
+      把畫廊裡的作品拖進下面的故事版，排出你自己的故事！只存在<b>這台瀏覽器裡</b>，別人看不到，換裝置或清瀏覽器資料就會消失。
+    </p>
+
+    <h3 style="margin:26px 0 10px;font-family:var(--font-hand);font-size:1.1rem;">🖼️ 素材庫（拖曳或點擊 ＋ 加入下面的故事版）</h3>
+    <div class="my-story-pool" id="my-story-pool">
+      <p style="color:#8a7d68;">載入中...</p>
+    </div>
+
+    <div id="my-story-boards"></div>
+
+    <div style="text-align:center;margin-top:20px;">
+      <button id="add-story-board-btn" class="btn btn-outline-dark" type="button">➕ 新增一個故事版（最多 3 個）</button>
+    </div>
+  </div>
+</section>
+
 <footer class="site-footer">
   <div class="container">
     © <span id="footer-year"></span> AI 創作畫廊・本網站由學生與老師共同維護
