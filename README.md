@@ -1,4 +1,4 @@
-# OO班 AI 創作畫廊
+# AI 創作畫廊
 
 一個「教室黑板布告欄 / 軟木塞公佈欄」風格的靜態網站，用來展示學生的 AI 生成作品。
 完全免費運作：前端是純 HTML/CSS/JS，資料庫是 Google Sheet，後端是 Google Apps Script，圖片放 Imgur（並自動備份到 Google Drive）。
