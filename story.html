@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI 創作畫廊</title>
-<meta name="description" content="展示學生 AI 生成作品的教室公佈欄式畫廊，練習與 AI 協作創作、學習寫出好的 Prompt。">
+<title>故事接龍 - AI 創作畫廊</title>
+<meta name="description" content="全班投票決定下一張接進故事的作品，一起用大家的 AI 創作接出一個獨一無二的故事。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -25,26 +25,12 @@
   </div>
 </header>
 
-<section class="hero blackboard-bg">
-  <span class="hero-decor d1">⭐</span>
-  <span class="hero-decor d2">🎨</span>
-  <span class="hero-decor d3">✨</span>
-  <span class="hero-decor d4">🖌️</span>
-  <span class="hero-decor d5">💭</span>
+<section class="hero blackboard-bg" style="padding:40px 0 30px;">
+  <span class="hero-decor d1" style="font-size:1.8rem;">🎲</span>
+  <span class="hero-decor d2" style="font-size:1.6rem;">📖</span>
   <div class="container">
-    <h1 class="hero-title">AI 創作畫廊</h1>
-    <svg class="hero-underline" viewBox="0 0 220 14" style="display:block;margin:0 auto 22px;">
-      <path d="M4 8 Q 55 2, 110 8 T 216 6" fill="none" stroke="#f5f1e6" stroke-width="3" stroke-linecap="round"/>
-    </svg>
-    <p class="hero-subtitle">ㄚ倫老師魔法實驗室</p>
-    <p class="hero-desc">
-      這裡是我們班的 AI 創作公佈欄。每一張被釘上牆的作品，背後都有一段學生與 AI 反覆對話、修改 Prompt 的過程。
-      我們想透過這個小小的展覽，練習「如何跟 AI 溝通」，也練習「怎麼把一個想法說清楚」。
-    </p>
-    <div class="btn-row" style="justify-content:center;">
-      <a href="gallery.html" class="btn btn-pin">前往畫廊看作品 →</a>
-      <a href="submit.html" class="btn btn-chalk">我要投稿作品</a>
-    </div>
+    <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);">故事接龍投票</h1>
+    <p class="hero-desc" style="margin-bottom:0;">大家一起投票，決定下一張接進故事的作品。時間到自動結算，得票最高的作品就會接上故事鏈！</p>
   </div>
 </section>
 <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -53,14 +39,26 @@
 
 <section class="board-section cork-bg">
   <div class="container">
-    <h2 class="board-heading">📌 精選作品</h2>
-    <p style="text-align:center;margin:-24px 0 30px;">
-      <span class="live-indicator"><span class="live-dot"></span>讚數即時更新中</span>
-    </p>
-    <div class="note-grid" id="featured-grid"></div>
-    <div style="text-align:center;margin-top:10px;">
-      <a href="gallery.html" class="btn btn-outline-dark">看全部作品</a>
+
+    <div id="story-loading" class="story-msg">故事載入中...</div>
+    <div id="story-empty" class="story-msg" style="display:none;">還沒有作品可以開始接龍，快去<a href="submit.html">投稿</a>第一張作品，讓故事開始吧！</div>
+    <div id="story-error" class="story-msg story-msg-error" style="display:none;"></div>
+
+    <div id="story-content" style="display:none;">
+      <h2 class="board-heading" style="font-size:1.6rem;">📖 目前的故事</h2>
+      <div class="story-chain" id="story-chain"></div>
+
+      <div id="round-section" style="margin-top:44px;">
+        <h2 class="board-heading" style="font-size:1.6rem;">🗳️ 這一輪投票中</h2>
+        <p style="text-align:center;color:#5b4f3f;" id="round-countdown"></p>
+        <div class="story-round-grid" id="story-round-grid"></div>
+      </div>
+
+      <div id="round-finished" class="story-msg" style="display:none;">
+        目前所有已上架的作品都已經接進故事鏈了！快去<a href="submit.html">投稿新作品</a>，讓故事可以繼續下去吧 🎉
+      </div>
     </div>
+
   </div>
 </section>
 
@@ -73,6 +71,6 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/main.js"></script>
-<script src="js/home.js"></script>
+<script src="js/story.js"></script>
 </body>
 </html>

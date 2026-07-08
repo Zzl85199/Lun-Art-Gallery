@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const container = document.getElementById("gallery-grid");
   const resultCountEl = document.getElementById("result-count");
   const classFilter = document.getElementById("filter-class");
+  const studentFilter = document.getElementById("filter-student");
   const toolFilter = document.getElementById("filter-tool");
   const searchInput = document.getElementById("filter-search");
 
@@ -38,6 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const prevClass = classFilter.value;
     const prevTool = toolFilter.value;
+    const prevStudent = studentFilter.value;
 
     classFilter.innerHTML =
       `<option value="">全部班級</option>` +
@@ -49,13 +51,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 保留使用者原本選擇的篩選條件（如果該選項還存在）
     if (classes.includes(prevClass)) classFilter.value = prevClass;
     if (tools.includes(prevTool)) toolFilter.value = prevTool;
+
+    populateStudentOptions(artworks, prevStudent);
+  }
+
+  /** 學生下拉選單會依目前選到的班級連動：先選班級可縮小姓名清單，也可以不選班級直接找全班的人 */
+  function populateStudentOptions(artworks, prevStudent) {
+    const cls = classFilter.value;
+    const pool = cls ? artworks.filter((a) => a.ClassName === cls) : artworks;
+    const students = Array.from(new Set(pool.map((a) => a.StudentName).filter(Boolean))).sort();
+
+    studentFilter.innerHTML =
+      `<option value="">全部學生</option>` +
+      students.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+
+    if (students.includes(prevStudent)) studentFilter.value = prevStudent;
   }
 
   function matchesFilter(a) {
     const cls = classFilter.value;
+    const student = studentFilter.value;
     const tool = toolFilter.value;
     const q = searchInput.value.trim().toLowerCase();
     if (cls && a.ClassName !== cls) return false;
+    if (student && a.StudentName !== student) return false;
     if (tool && a.AITool !== tool) return false;
     if (q) {
       const haystack = [a.StudentName, a.Prompt, a.Description, a.Tags].join(" ").toLowerCase();
@@ -136,7 +155,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     }, 15000);
   }
 
-  classFilter.addEventListener("change", renderAll);
+  classFilter.addEventListener("change", () => {
+    populateStudentOptions(allArtworks, ""); // 換班級時，姓名清單要重新縮小，並清空原本選的姓名
+    renderAll();
+  });
+  studentFilter.addEventListener("change", renderAll);
   toolFilter.addEventListener("change", renderAll);
   let debounceTimer;
   searchInput.addEventListener("input", () => {

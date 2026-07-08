@@ -55,6 +55,16 @@ const Api = {
     return this._get({ action: "roster" });
   },
 
+  /** 取得故事接龍：目前已完成的故事鏈 + 這一輪投票中的候選作品 */
+  getStory() {
+    return this._get({ action: "story" });
+  },
+
+  /** 幫某張候選作品投票（同一個 voterId 換票時，會自動取消原本那一票） */
+  voteStory(voterId, artworkId) {
+    return this._post({ action: "storyVote", voterId, artworkId });
+  },
+
   /** 取得單件作品的留言 */
   getComments(artworkId) {
     return this._get({ action: "comments", artworkId });

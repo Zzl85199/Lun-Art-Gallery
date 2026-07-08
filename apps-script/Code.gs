@@ -24,9 +24,13 @@ const CONFIG = {
   SHEET_ARTWORKS: "Artworks",
   SHEET_USERS: "AuthorizedUsers",
   SHEET_COMMENTS: "Comments",
+  SHEET_STORY_CHAIN: "StoryChain",
   // 請填入你要用來備份圖片的 Google Drive 資料夾 ID
   // （在資料夾網址 https://drive.google.com/drive/folders/XXXXXXXX 中，XXXXXXXX 就是 ID）
   DRIVE_BACKUP_FOLDER_ID: "PASTE_YOUR_DRIVE_FOLDER_ID_HERE",
+  // 投票接龍遊戲設定
+  STORY_ROUND_HOURS: 24,        // 每一輪投票開放幾小時，時間到自動結算、選出得票最高的作品接上故事
+  STORY_CANDIDATES_PER_ROUND: 4, // 每一輪從「還沒被選進故事」的已上架作品中，隨機抽幾張讓大家投票
 };
 
 const ARTWORK_HEADERS = [
@@ -46,6 +50,16 @@ const ARTWORK_HEADERS = [
 
 const USER_HEADERS = ["StudentName", "ClassName", "Status", "AutoApprove"];
 const COMMENT_HEADERS = ["ArtworkID", "CommenterName", "Comment", "Timestamp"];
+const STORY_CHAIN_HEADERS = [
+  "Order",
+  "ArtworkID",
+  "StudentName",
+  "ClassName",
+  "ImageURL",
+  "AITool",
+  "WinningVotes",
+  "Timestamp",
+];
 
 /* =========================================================================
    共用工具
@@ -142,6 +156,10 @@ function doGet(e) {
       return jsonOut_({ roster });
     }
 
+    if (action === "story") {
+      return jsonOut_({ story: getStorySnapshot_() });
+    }
+
     // 預設：回傳所有已上架作品
     const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
     const all = sheetToObjects_(sheet);
@@ -166,6 +184,7 @@ function doPost(e) {
     if (action === "submit") return handleSubmit_(body);
     if (action === "like") return handleLike_(body);
     if (action === "comment") return handleComment_(body);
+    if (action === "storyVote") return handleStoryVote_(body);
 
     return jsonOut_({ error: "未知的 action：" + action });
   } catch (err) {
@@ -313,6 +332,231 @@ function handleComment_(body) {
 }
 
 /* =========================================================================
+   故事接龍投票遊戲（StoryChain）
+   -------------------------------------------------------------------------
+   玩法：每一輪從「還沒被選進故事」的已上架作品中隨機抽幾張當候選，
+   大家投票；時間到（STORY_ROUND_HOURS 小時）自動結算，得票最高的作品
+   接進故事鏈，然後自動開下一輪。狀態存在 PropertiesService（不用另外
+   開分頁），故事鏈本身則寫進 Google Sheet 的 StoryChain 分頁，方便老師
+   直接在 Sheet 上查看完整故事順序。
+   ========================================================================= */
+
+const STORY_STATE_KEY = "STORY_STATE_V1";
+
+function getStoryState_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(STORY_STATE_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function saveStoryState_(state) {
+  PropertiesService.getScriptProperties().setProperty(STORY_STATE_KEY, JSON.stringify(state));
+}
+
+function getApprovedArtworks_() {
+  const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
+  return sheetToObjects_(sheet).filter((a) => parseBoolean_(a.Approved));
+}
+
+function getStoryChainRows_() {
+  const sheet = getSheet_(CONFIG.SHEET_STORY_CHAIN);
+  return sheetToObjects_(sheet).sort((a, b) => Number(a.Order) - Number(b.Order));
+}
+
+function shuffle_(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** 確保目前有一輪「進行中」的投票；如果沒有（第一次啟用、或上一輪剛結算完），
+ *  就從還沒被選進故事鏈的已上架作品中，隨機抽幾張開新的一輪。
+ *  如果已經沒有還沒用過的作品了，就把 candidates 設為空陣列（代表故事暫時完結，
+ *  之後只要有新投稿通過審核，下次呼叫就會自動再開新的一輪）。
+ */
+function ensureRoundActive_() {
+  let state = getStoryState_();
+  if (state && state.candidates && state.candidates.length > 0) return state;
+
+  const approved = getApprovedArtworks_();
+  const usedIds = new Set(getStoryChainRows_().map((r) => String(r.ArtworkID)));
+  const unused = approved.filter((a) => !usedIds.has(String(a.ID)));
+
+  const candidates = shuffle_(unused)
+    .slice(0, CONFIG.STORY_CANDIDATES_PER_ROUND)
+    .map((a) => String(a.ID));
+
+  state = {
+    roundNumber: state ? state.roundNumber + 1 : 1,
+    startTime: new Date().toISOString(),
+    durationHours: CONFIG.STORY_ROUND_HOURS,
+    candidates: candidates,
+    votes: {}, // { artworkId: [voterId, ...] }
+  };
+  saveStoryState_(state);
+  return state;
+}
+
+/** 如果目前這一輪時間到了，結算出勝出的作品、接進故事鏈，並開下一輪。
+ *  用 LockService 避免多個使用者同時打開網頁時重複結算兩次。
+ */
+function checkAndFinalizeIfExpired_() {
+  let state = getStoryState_();
+  if (!state || !state.candidates || state.candidates.length === 0) return state;
+
+  const endsAt = new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000;
+  if (Date.now() < endsAt) return state;
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    // 重新讀一次，避免自己在等鎖的時候，別人已經搶先結算過了
+    state = getStoryState_();
+    if (!state || !state.candidates || state.candidates.length === 0) return state;
+    const stillEndsAt = new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000;
+    if (Date.now() < stillEndsAt) return state;
+
+    const approved = getApprovedArtworks_();
+    const byId = {};
+    approved.forEach((a) => (byId[String(a.ID)] = a));
+
+    // 找出票數最高的候選；沒人投票的話就隨機選一張，故事還是要繼續走下去
+    let winnerId = null;
+    let bestVotes = -1;
+    let tied = [];
+    state.candidates.forEach((id) => {
+      const count = (state.votes[id] || []).length;
+      if (count > bestVotes) {
+        bestVotes = count;
+        tied = [id];
+      } else if (count === bestVotes) {
+        tied.push(id);
+      }
+    });
+    winnerId = shuffle_(tied)[0]; // 平票就隨機挑一個，避免卡住
+
+    const winnerArt = byId[winnerId];
+    if (winnerArt) {
+      const chainSheet = getSheet_(CONFIG.SHEET_STORY_CHAIN);
+      const nextOrder = getStoryChainRows_().length + 1;
+      chainSheet.appendRow([
+        nextOrder,
+        winnerArt.ID,
+        winnerArt.StudentName,
+        winnerArt.ClassName,
+        winnerArt.ImageURL,
+        winnerArt.AITool,
+        bestVotes < 0 ? 0 : bestVotes,
+        new Date(),
+      ]);
+    }
+
+    // 清空目前這一輪，讓 ensureRoundActive_ 開新的一輪
+    state.candidates = [];
+    saveStoryState_(state);
+    state = ensureRoundActive_();
+    return state;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buildStoryRoundPayload_(state) {
+  if (!state || !state.candidates || state.candidates.length === 0) {
+    return {
+      roundNumber: state ? state.roundNumber : 0,
+      candidates: [],
+      finished: getStoryChainRows_().length > 0, // 有故事但目前沒有候選 = 暫時沒有新投稿可以接龍
+    };
+  }
+  const approved = getApprovedArtworks_();
+  const byId = {};
+  approved.forEach((a) => (byId[String(a.ID)] = a));
+
+  const endsAt = new Date(
+    new Date(state.startTime).getTime() + state.durationHours * 3600 * 1000
+  ).toISOString();
+
+  const candidates = state.candidates
+    .map((id) => {
+      const art = byId[id];
+      if (!art) return null;
+      return {
+        artworkId: id,
+        studentName: art.StudentName,
+        className: art.ClassName,
+        imageUrl: art.ImageURL,
+        driveBackupUrl: art.DriveBackupURL,
+        aiTool: art.AITool,
+        voteCount: (state.votes[id] || []).length,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    roundNumber: state.roundNumber,
+    startTime: state.startTime,
+    durationHours: state.durationHours,
+    endsAt: endsAt,
+    candidates: candidates,
+    finished: false,
+  };
+}
+
+/** 提供給 doGet(action=story) 使用：確保有進行中的一輪、結算過期的一輪，再回傳完整故事鏈 + 目前這輪的狀態 */
+function getStorySnapshot_() {
+  ensureRoundActive_();
+  const state = checkAndFinalizeIfExpired_();
+  const chain = getStoryChainRows_();
+  return { chain: chain, round: buildStoryRoundPayload_(state) };
+}
+
+/* -------------------------------------------------------------------------
+   action = storyVote
+   ------------------------------------------------------------------------- */
+function handleStoryVote_(body) {
+  const voterId = String(body.voterId || "").trim();
+  const artworkId = String(body.artworkId || "").trim();
+  if (!voterId || !artworkId) {
+    return jsonOut_({ error: "缺少必要欄位（voterId / artworkId）" });
+  }
+
+  ensureRoundActive_();
+  let state = checkAndFinalizeIfExpired_();
+
+  if (!state || !state.candidates.includes(artworkId)) {
+    return jsonOut_({
+      error: "這一輪投票已經結束囉，頁面即將更新，請重新整理再投一次",
+      round: buildStoryRoundPayload_(state),
+    });
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    state = getStoryState_();
+    if (!state || !state.candidates.includes(artworkId)) {
+      return jsonOut_({
+        error: "這一輪投票已經結束囉，頁面即將更新，請重新整理再投一次",
+        round: buildStoryRoundPayload_(state),
+      });
+    }
+    // 同一個人换票：先把他從所有候選的投票名單中移除，再加進新選的那張
+    state.candidates.forEach((id) => {
+      state.votes[id] = (state.votes[id] || []).filter((v) => v !== voterId);
+    });
+    if (!state.votes[artworkId]) state.votes[artworkId] = [];
+    state.votes[artworkId].push(voterId);
+    saveStoryState_(state);
+    return jsonOut_({ success: true, round: buildStoryRoundPayload_(state) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* =========================================================================
    （選用）初始化分頁表頭 — 若你想用程式碼快速建立空白分頁結構，
    可在 Apps Script 編輯器中手動執行這個函式一次
    ========================================================================= */
@@ -332,4 +576,15 @@ function setupSheets_() {
   ensureSheet(CONFIG.SHEET_ARTWORKS, ARTWORK_HEADERS);
   ensureSheet(CONFIG.SHEET_USERS, USER_HEADERS);
   ensureSheet(CONFIG.SHEET_COMMENTS, COMMENT_HEADERS);
+  ensureSheet(CONFIG.SHEET_STORY_CHAIN, STORY_CHAIN_HEADERS);
+}
+
+/**
+ * 這是給你在 Apps Script 編輯器手動執行用的入口。
+ * 因為 setupSheets_ 結尾有底線（Apps Script 的「私有函式」命名慣例），
+ * 編輯器上方的函式下拉選單「故意」不會顯示它，所以另外包一個沒有底線的函式，
+ * 執行這個 initializeSheets 就可以了。
+ */
+function initializeSheets() {
+  setupSheets_();
 }

@@ -172,6 +172,11 @@ const CONFIG = {
 - **首頁 / 畫廊頁**：呼叫 `GET {APPS_SCRIPT_URL}` 取得所有 `Approved=TRUE` 的作品 JSON。
 - **作品詳細 Modal**：呼叫 `GET {APPS_SCRIPT_URL}?action=comments&artworkId=xxx` 取得該作品的留言。
 - **投稿頁 — 班級/姓名下拉選單**：呼叫 `GET {APPS_SCRIPT_URL}?action=roster`，回傳 `AuthorizedUsers` 分頁中 `Status=Active` 的 `{className, studentName}` 清單。投稿頁會用這份清單動態組出「先選班級、再選姓名」的連動下拉選單，所以**老師要新增/刪除班級或學生，只要直接編輯 Google Sheet 的 `AuthorizedUsers` 分頁即可**，不需要改任何程式碼或重新部署網站。若這個 API 連不上，投稿頁會自動退回成「固定班級清單（`js/config.js` 的 `CLASSES`）+ 手動輸入姓名」的備援模式。
+- **故事接龍（story.html）**：呼叫 `GET {APPS_SCRIPT_URL}?action=story` 取得目前故事鏈（`StoryChain` 分頁）與這一輪投票候選；呼叫 `POST` `{ action: "storyVote", voterId, artworkId }` 投票。
+  - 每一輪從「還沒被選進故事」的已上架作品中隨機抽 `CONFIG.STORY_CANDIDATES_PER_ROUND`（預設 4）張讓大家投票，投票時間 `CONFIG.STORY_ROUND_HOURS`（預設 24 小時，都在 Code.gs 最上面可以改）。
+  - 時間到，任何一個訪客打開頁面時就會觸發自動結算（用 `LockService` 避免同時被結算兩次）：得票最高的作品接進 `StoryChain` 分頁，然後自動開下一輪。
+  - 投票身分用瀏覽器 `localStorage` 產生的隨機 ID 辨識（同一輪可以換票，但沒有帳號登入機制，同一人開無痕視窗理論上可以多投，適合班級內信任情境使用，不建議用於正式比賽計票）。
+  - 已上架作品全部接完故事鏈後，頁面會顯示「暫時沒有新作品可以接龍」，等有新投稿通過審核就會自動繼續。
 - **投稿頁**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "submit", studentName, className, imageUrl, aiTool, prompt, description, tags }`。
   - 後端會先比對 `AuthorizedUsers` 分頁確認 `Status=Active`。
   - 用 `UrlFetchApp` 抓取 Imgur 圖片，備份一份到 Google Drive，寫入 `DriveBackupURL`。
@@ -180,7 +185,9 @@ const CONFIG = {
 - **留言**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "comment", artworkId, commenterName, comment }`，寫入 `Comments` 分頁。
 - **圖片備援**：前端 `<img>` 的 `onerror` 事件會自動切換成 `DriveBackupURL`，Imgur 掛掉也不會斷圖。
 
-> ⚠️ 這個版本的 `Code.gs` 新增了 `action=roster`。如果你的 Google Sheet 綁定的 Apps Script 是舊版程式碼，記得要把新的 `apps-script/Code.gs` 整份貼上覆蓋，然後「部署 → 管理部署作業 → 編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」。這樣網址（`/exec`）不會改變，`js/config.js` 也不用再改一次。
+> ⚠️ 這個版本的 `Code.gs` 新增了 `action=roster` 與故事接龍（`action=story` / `action=storyVote`）。如果你的 Google Sheet 綁定的 Apps Script 是舊版程式碼，記得要把新的 `apps-script/Code.gs` 整份貼上覆蓋，然後「部署 → 管理部署作業 → 編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」。這樣網址（`/exec`）不會改變，`js/config.js` 也不用再改一次。
+>
+> 另外故事接龍需要一個新的 `StoryChain` 分頁（欄位：Order / ArtworkID / StudentName / ClassName / ImageURL / AITool / WinningVotes / Timestamp）。在 Apps Script 編輯器選單列的函式下拉選單選 `setupSheets_`，按執行一次，就會自動幫你補上這個分頁（已存在的分頁不會被覆蓋，可以放心執行）。
 
 ---
 

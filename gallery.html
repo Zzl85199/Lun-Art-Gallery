@@ -7,7 +7,7 @@
 <meta name="description" content="瀏覽全班同學的 AI 創作作品，可依班級、AI 工具、關鍵字篩選。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=WDXL+Lubrifont+TC&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Huninn&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -19,6 +19,7 @@
       <a class="nav-tab" data-page="home" href="index.html">首頁</a>
       <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
       <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
+      <a class="nav-tab" data-page="story" href="story.html">故事接龍</a>
       <a class="nav-tab" data-page="about" href="about.html">關於</a>
     </nav>
   </div>
@@ -42,6 +43,9 @@
       <span class="filter-label">篩選：</span>
       <select id="filter-class" aria-label="依班級篩選">
         <option value="">全部班級</option>
+      </select>
+      <select id="filter-student" aria-label="依學生篩選">
+        <option value="">全部學生</option>
       </select>
       <select id="filter-tool" aria-label="依 AI 工具篩選">
         <option value="">全部 AI 工具</option>
