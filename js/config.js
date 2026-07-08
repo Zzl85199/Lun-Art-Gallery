@@ -17,5 +17,5 @@ const CONFIG = {
   // Google Sheet 的 AuthorizedUsers 分頁（新增/刪除班級或學生，直接在 Sheet 上編輯即可，
   // 不需要改這裡、也不需要重新部署網站）。
   CLASSES: ["七年一班", "七年二班", "八年一班", "八年二班"],
-  AI_TOOLS: ["Midjourney", "DALL·E", "Stable Diffusion", "Adobe Firefly", "其他"],
+  AI_TOOLS: ["Midjourney", "DALL·E", "ChatGPT", "Stable Diffusion", "Adobe Firefly", "其他"],
 };

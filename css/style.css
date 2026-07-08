@@ -1286,138 +1286,230 @@ button {
   opacity: 0.9;
 }
 
+.my-story-section {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(63,126,166,0.06) 0, transparent 40%),
+    radial-gradient(circle at 80% 60%, rgba(92,138,74,0.06) 0, transparent 40%),
+    radial-gradient(circle at 50% 90%, rgba(200,140,40,0.06) 0, transparent 40%),
+    var(--paper);
+}
+
 /* ===================================================================
    我的故事本（story.html 個人拖曳故事版，純前端 localStorage）
    =================================================================== */
 
 .my-story-pool {
   display: flex;
-  gap: 14px;
+  gap: 20px;
   overflow-x: auto;
-  padding: 8px 4px 16px;
+  padding: 16px 10px 26px;
 }
 
 .my-story-pool-item {
   flex: 0 0 auto;
-  width: 100px;
+  width: 112px;
   cursor: grab;
   position: relative;
   text-align: center;
+  background: #fff;
+  padding: 8px 8px 22px;
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(60, 45, 20, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.my-story-pool-item:nth-child(odd) { transform: rotate(-3deg); }
+.my-story-pool-item:nth-child(even) { transform: rotate(2.5deg); }
+
+.my-story-pool-item:hover {
+  transform: rotate(0deg) translateY(-6px) scale(1.06);
+  box-shadow: 0 10px 18px rgba(60, 45, 20, 0.32);
+  z-index: 3;
 }
 
 .my-story-pool-item img {
-  width: 100px;
-  height: 100px;
+  width: 96px;
+  height: 96px;
   object-fit: cover;
-  border-radius: 8px;
-  box-shadow: var(--shadow-soft);
+  border-radius: 2px;
   display: block;
 }
 
 .pool-item-add {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 22px;
-  height: 22px;
+  top: -8px;
+  right: -8px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: var(--pushpin-red);
+  background: radial-gradient(circle at 32% 28%, #ef8f83 0%, var(--pushpin-red) 55%, #7c261c 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  box-shadow: 0 3px 5px rgba(0,0,0,0.35);
+  transition: transform 0.15s ease;
 }
+
+.pool-item-add:hover { transform: scale(1.2) rotate(10deg); }
 
 .pool-item-name {
   font-size: 0.75rem;
-  margin-top: 4px;
+  margin-top: 6px;
   color: #5b4f3f;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-hand);
 }
 
 .my-story-board {
-  background: var(--kraft);
-  border-radius: 10px;
-  padding: 14px 16px 18px;
-  margin-top: 20px;
-  border: 2px dashed var(--cork-dark);
+  position: relative;
+  background: repeating-linear-gradient(
+      transparent, transparent 27px, rgba(63,126,166,0.08) 28px
+    ),
+    #fffdf6;
+  border-radius: 14px;
+  padding: 22px 20px 26px;
+  margin-top: 28px;
+  box-shadow: var(--shadow-lift);
+  border: 1px solid rgba(0,0,0,0.06);
 }
+
+.my-story-board::before {
+  /* 貼在角落的紙膠帶裝飾，每個故事版顏色不同 */
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 28px;
+  width: 70px;
+  height: 24px;
+  background: var(--pushpin-yellow);
+  opacity: 0.85;
+  transform: rotate(-6deg);
+  box-shadow: 0 2px 3px rgba(0,0,0,0.2);
+}
+
+.my-story-board:nth-child(2)::before { background: var(--pushpin-blue); left: auto; right: 32px; transform: rotate(7deg); }
+.my-story-board:nth-child(3)::before { background: var(--pushpin-green); transform: rotate(4deg); }
 
 .my-board-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
-.my-board-title { font-family: var(--font-hand); font-size: 1.05rem; }
+.my-board-title {
+  font-family: var(--font-hand);
+  font-size: 1.3rem;
+  color: var(--ink);
+}
 
 .my-board-delete {
   background: none;
   border: none;
   color: #7a2116;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   cursor: pointer;
   text-decoration: underline;
+  opacity: 0.75;
 }
+.my-board-delete:hover { opacity: 1; }
 
 .my-story-board-dropzone {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  min-height: 120px;
-  border-radius: 8px;
-  padding: 10px;
-  transition: background 0.15s ease;
+  align-items: flex-start;
+  gap: 20px;
+  min-height: 150px;
+  border-radius: 10px;
+  padding: 14px;
+  border: 2px dashed rgba(63, 126, 166, 0.35);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .my-story-board-dropzone.is-drag-over {
   background: rgba(63, 126, 166, 0.12);
+  border-color: var(--pushpin-blue);
 }
 
 .my-board-empty {
-  color: #8a7d68;
-  font-size: 0.85rem;
+  color: #a5987f;
+  font-size: 0.88rem;
   margin: auto;
-  padding: 20px;
+  padding: 30px 16px;
+  text-align: center;
+  font-family: var(--font-hand);
 }
 
 .my-story-frame {
-  width: 140px;
-  background: var(--paper);
-  border-radius: var(--radius-note);
-  box-shadow: var(--shadow-soft);
+  width: 148px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 5px 12px rgba(60, 45, 20, 0.3);
   padding: 8px 8px 10px;
   position: relative;
   cursor: grab;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.my-story-frame:nth-child(odd) { transform: rotate(2deg); }
+.my-story-frame:nth-child(even) { transform: rotate(-2deg); }
+
+.my-story-frame:hover {
+  transform: rotate(0deg) translateY(-4px) scale(1.04);
+  box-shadow: 0 10px 18px rgba(60, 45, 20, 0.38);
+  z-index: 3;
+}
+
+.my-story-frame .story-frame-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--kraft-dark);
+}
+.my-story-frame .story-frame-img img { width: 100%; height: 100%; object-fit: cover; }
+
+.my-story-frame .story-frame-caption {
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+  margin-top: 6px;
+  text-align: center;
 }
 
 .my-frame-remove {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 22px;
-  height: 22px;
+  top: -10px;
+  right: -10px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: #7a2116;
   color: #fff;
-  border: 2px solid var(--paper);
+  border: 2px solid #fff;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   line-height: 1;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
 .my-frame-caption-input {
   width: 100%;
-  margin-top: 6px;
-  font-size: 0.75rem;
-  padding: 4px 6px;
-  border: 1px solid var(--kraft-dark);
-  border-radius: 4px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  padding: 5px 8px;
+  border: 1px dashed var(--pushpin-blue);
+  background: rgba(63, 126, 166, 0.06);
+  border-radius: 6px;
   font-family: var(--font-body);
+}
+.my-frame-caption-input:focus {
+  outline: none;
+  border-style: solid;
+  background: #fff;
 }

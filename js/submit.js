@@ -4,12 +4,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const classSelect = document.getElementById("field-class");
   const toolSelect = document.getElementById("field-tool");
+  const toolOtherInput = document.getElementById("field-tool-other");
   const imageInput = document.getElementById("field-image");
   const imageCheckEl = document.getElementById("image-check");
   const imagePreviewEl = document.getElementById("image-preview");
   const rosterFallbackHint = document.getElementById("roster-fallback-hint");
 
   toolSelect.innerHTML = CONFIG.AI_TOOLS.map((t) => `<option>${escapeHtml(t)}</option>`).join("");
+
+  toolSelect.addEventListener("change", () => {
+    const isOther = toolSelect.value === "其他";
+    toolOtherInput.style.display = isOther ? "block" : "none";
+    toolOtherInput.required = isOther;
+    if (!isOther) toolOtherInput.value = "";
+  });
 
   let nameSelect = document.getElementById("field-name");
   let classToStudents = {}; // { className: [studentName, ...] }
@@ -168,11 +176,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const isOtherTool = toolSelect.value === "其他";
+    const customTool = toolOtherInput.value.trim();
+    if (isOtherTool && !customTool) {
+      showMsg("error", "選了「其他」，請輸入你使用的 AI 工具名稱。");
+      return;
+    }
+
     const payload = {
       studentName,
       className,
       imageUrl,
-      aiTool: toolSelect.value,
+      aiTool: isOtherTool ? customTool : toolSelect.value,
       prompt: document.getElementById("field-prompt").value.trim(),
       description: document.getElementById("field-desc").value.trim(),
       tags: document.getElementById("field-tags").value.trim(),
@@ -190,6 +205,8 @@ document.addEventListener("DOMContentLoaded", () => {
         showMsg("pending", "✅ 投稿成功，待老師審核後會出現在畫廊中，請耐心等候～");
       }
       form.reset();
+      toolOtherInput.style.display = "none";
+      toolOtherInput.required = false;
       imageCheckEl.className = "image-check";
       imageCheckEl.textContent = "";
       imagePreviewEl.style.display = "none";
