@@ -1287,11 +1287,59 @@ button {
 }
 
 .my-story-section {
+  position: relative;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 20% 20%, rgba(63,126,166,0.06) 0, transparent 40%),
-    radial-gradient(circle at 80% 60%, rgba(92,138,74,0.06) 0, transparent 40%),
-    radial-gradient(circle at 50% 90%, rgba(200,140,40,0.06) 0, transparent 40%),
-    var(--paper);
+    /* 柔和的彩色光暈，讓畫面更有故事書氣氛 */
+    radial-gradient(circle at 12% 16%, rgba(63,126,166,0.16) 0, transparent 34%),
+    radial-gradient(circle at 88% 20%, rgba(209,72,59,0.12) 0, transparent 32%),
+    radial-gradient(circle at 80% 84%, rgba(92,138,74,0.16) 0, transparent 34%),
+    radial-gradient(circle at 20% 88%, rgba(219,165,44,0.16) 0, transparent 34%),
+    /* 底色暖暖的紙張漸層 */
+    linear-gradient(160deg, #fdf8ee 0%, #fbeede 46%, #f5f2e3 100%);
+}
+
+/* 細點點紋理，像故事書的內頁 */
+.my-story-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(169,130,79,0.16) 1.5px, transparent 1.6px);
+  background-size: 24px 24px;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 右上 / 左下角落的手繪感光暈，增加活潑度 */
+.my-story-section::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% -6%, rgba(255,255,255,0.65) 0, transparent 45%),
+    radial-gradient(circle at 96% 8%, rgba(244,226,133,0.35) 0, transparent 18%),
+    radial-gradient(circle at 4% 96%, rgba(63,126,166,0.18) 0, transparent 20%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 讓內容浮在上面兩層裝飾之上 */
+.my-story-section > .container {
+  position: relative;
+  z-index: 1;
+}
+
+/* 「我的故事本」標題做成一張貼在頁面上的小標籤 */
+.my-story-heading {
+  display: table;
+  margin: 0 auto 34px;
+  padding: 8px 26px;
+  transform: rotate(-1.2deg);
+  background: linear-gradient(180deg, #fffdf6, #fbefd6);
+  border: 2px dashed var(--cork-dark);
+  border-radius: 16px;
+  box-shadow: 0 6px 14px rgba(120, 90, 40, 0.18);
 }
 
 /* ===================================================================

@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const roundGridEl = document.getElementById("story-round-grid");
   const roundCountdownEl = document.getElementById("round-countdown");
   const roundFinishedEl = document.getElementById("round-finished");
+  const voteWrapEl = document.getElementById("story-vote-wrap");
 
   const voterId = getVoterId();
   let countdownTimer = null;
@@ -31,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     emptyEl.style.display = state === "empty" ? "block" : "none";
     errorEl.style.display = state === "error" ? "block" : "none";
     contentEl.style.display = state === "content" ? "block" : "none";
+    if (voteWrapEl) voteWrapEl.style.display = state === "content" ? "block" : "none";
   }
 
   async function loadStory() {

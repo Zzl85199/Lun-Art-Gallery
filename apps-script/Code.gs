@@ -510,6 +510,46 @@ function installDailyStoryTrigger() {
     .create();
 }
 
+/**
+ * 🔧 老師專用：把「故事接龍」整個重置成全新狀態。
+ * 會做兩件事：
+ *   1. 清空 StoryChain 分頁裡所有已經接好的故事（保留第 1 列表頭）
+ *   2. 清除目前的投票狀態（輪次、候選作品、票數通通歸零）
+ * 執行完之後，下次有人打開故事接龍頁面（或你手動執行 advanceStoryRound），
+ * 就會自動從「第 1 輪、空白故事」重新開始接龍。
+ *
+ * ⚠️ 這個動作無法復原！執行前請先確認你真的要清掉目前整條故事。
+ *    （被接進故事的原始作品仍留在 Artworks 分頁，只是會回到「還沒被選進故事」的狀態，
+ *      下一輪可能又被抽中當候選。）
+ *
+ * 執行方式：在 Apps Script 編輯器上方的函式下拉選單選「resetStory」，按「執行」。
+ */
+function resetStory() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    // 1. 清空 StoryChain 分頁的資料列（保留第 1 列表頭）
+    const chainSheet = getSheet_(CONFIG.SHEET_STORY_CHAIN);
+    const lastRow = chainSheet.getLastRow();
+    let clearedChain = 0;
+    if (lastRow > 1) {
+      clearedChain = lastRow - 1;
+      chainSheet.deleteRows(2, clearedChain);
+    }
+
+    // 2. 清除目前這一輪的投票狀態（輪次 / 候選 / 票數全部歸零）
+    PropertiesService.getScriptProperties().deleteProperty(STORY_STATE_KEY);
+
+    Logger.log(
+      "✅ 故事接龍已重置：清空了 " + clearedChain + " 段故事，投票狀態已歸零。" +
+      "下次載入頁面會自動從第 1 輪重新開始。"
+    );
+    return { success: true, clearedChain: clearedChain };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function buildStoryRoundPayload_(state) {
   if (!state || !state.candidates || state.candidates.length === 0) {
     return {

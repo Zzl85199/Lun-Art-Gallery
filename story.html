@@ -47,16 +47,6 @@
     <div id="story-content" style="display:none;">
       <h2 class="board-heading" style="font-size:1.6rem;">📖 目前的故事</h2>
       <div class="story-chain" id="story-chain"></div>
-
-      <div id="round-section" style="margin-top:44px;">
-        <h2 class="board-heading" style="font-size:1.6rem;">🗳️ 這一輪投票中</h2>
-        <p style="text-align:center;color:#5b4f3f;" id="round-countdown"></p>
-        <div class="story-round-grid" id="story-round-grid"></div>
-      </div>
-
-      <div id="round-finished" class="story-msg" style="display:none;">
-        目前所有已上架的作品都已經接進故事鏈了！快去<a href="submit.html">投稿新作品</a>，讓故事可以繼續下去吧 🎉
-      </div>
     </div>
 
   </div>
@@ -68,7 +58,7 @@
 
 <section class="board-section my-story-section">
   <div class="container">
-    <h2 class="board-heading" style="font-size:1.6rem;">🎨 我的故事本</h2>
+    <h2 class="board-heading my-story-heading" style="font-size:1.7rem;">🎨 我的故事本</h2>
     <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">
       把畫廊裡的作品拖進下面的故事版，排出你自己的故事！只存在<b>這台瀏覽器裡</b>，別人看不到，換裝置或清瀏覽器資料就會消失。
     </p>
@@ -85,6 +75,26 @@
     </div>
   </div>
 </section>
+
+<!-- 投票區塊：整組（含上方波浪）由 story.js 依載入狀態一起顯示 / 隱藏 -->
+<div id="story-vote-wrap" style="display:none;">
+  <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
+  </svg>
+  <section class="board-section cork-bg">
+    <div class="container">
+      <div id="round-section">
+        <h2 class="board-heading" style="font-size:1.6rem;">🗳️ 這一輪投票中</h2>
+        <p style="text-align:center;color:#5b4f3f;" id="round-countdown"></p>
+        <div class="story-round-grid" id="story-round-grid"></div>
+      </div>
+
+      <div id="round-finished" class="story-msg" style="display:none;">
+        目前所有已上架的作品都已經接進故事鏈了！快去<a href="submit.html">投稿新作品</a>，讓故事可以繼續下去吧 🎉
+      </div>
+    </div>
+  </section>
+</div>
 
 <footer class="site-footer">
   <div class="container">
