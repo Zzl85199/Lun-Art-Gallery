@@ -1660,3 +1660,57 @@ button {
 
 #book-tabs .book-tab-btn { font-family: var(--font-hand); }
 .save-status { min-height: 1.4em; }
+
+.reference-option { cursor: pointer; border: 2px solid transparent; }
+.reference-option.selected { border-color: var(--pushpin-green); box-shadow: 0 0 0 2px rgba(107,160,67,0.3); }
+
+/* 公開範圍：hover/focus 顯示說明的小 tooltip，取代常駐的說明文字 */
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  cursor: help;
+}
+.info-tooltip .tooltip-text {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  position: absolute;
+  left: 0;
+  top: 130%;
+  z-index: 5;
+  width: 230px;
+  background: #2b2b2b;
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  pointer-events: none;
+}
+.info-tooltip:hover .tooltip-text,
+.info-tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
+
+/* 常用標籤快選 chip */
+.tag-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag-chip {
+  border: 1.5px solid var(--kraft);
+  background: #fff;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.15s ease;
+}
+.tag-chip:hover { border-color: var(--pushpin-blue); }
+.tag-chip.active { background: var(--pushpin-blue); border-color: var(--pushpin-blue); color: #fff; }

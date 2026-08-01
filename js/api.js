@@ -87,6 +87,7 @@ const Api = {
   },
   authMe() { return this._post({ action: "auth/me" }); },
   authUpdateNickname(nickname) { return this._post({ action: "auth/updateNickname", nickname }); },
+  authUpdateCharacterSheet(characterSheet) { return this._post({ action: "auth/updateCharacterSheet", characterSheet }); },
   logout() { return this._post({ action: "auth/logout" }); },
 
   /* ---------------- 投稿 / 我的作品 / 隱私 ---------------- */
@@ -115,5 +116,5 @@ const Api = {
 
   /* ---------------- AI 作圖 ---------------- */
   aiQuota() { return this._post({ action: "ai/quota" }); },
-  aiGenerate(prompt) { return this._post({ action: "ai/generate", prompt }); },
+  aiGenerate(prompt, referenceArtworkId) { return this._post({ action: "ai/generate", prompt, referenceArtworkId: referenceArtworkId || "" }); },
 };

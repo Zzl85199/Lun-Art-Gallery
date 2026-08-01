@@ -80,11 +80,13 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 ## 四、Google Sheet 分頁結構（`setupOrMigrate()` 會自動建立/補齊）
 
 ### AuthorizedUsers
-`UserID, GoogleSub, Email, StudentName, Nickname, ClassName, Role, Status, ArtworkAutoApprove, QuotaMode, QuotaLimit, ResetHour, SessionVersion, CreatedAt, ApprovedAt`
+`UserID, GoogleSub, Email, StudentName, Nickname, ClassName, Role, Status, ArtworkAutoApprove, QuotaMode, QuotaLimit, ResetHour, SessionVersion, CreatedAt, ApprovedAt, CharacterSheet`
 
 - **老師唯一需要手動編輯的分頁**。新帳號申請後 `Status` 會是 `Pending`，老師改成
   `Active` 才能使用受保護功能（投稿、故事接龍、AI 作圖、故事本）；改成
-  `Disabled`／`Suspended`／其他非 `Active` 值都會被擋下。
+  `Disabled`／`Suspended`／其他非 `Active` 值都會被擋下。`Status` 欄有下拉選單
+  （`Pending/Active/Disabled/Suspended/Inactive`），但仍可直接打字打入清單外的
+  文字，不會被拒絕。
 - `ArtworkAutoApprove`：`TRUE` 表示這個人投稿的公開/僅畫廊作品直接上架，不需要
   審核。
 - `QuotaLimit` / `ResetHour`：AI 作圖每人每日額度與重置時間（Asia/Taipei 24 小
@@ -92,6 +94,9 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 - `SessionVersion`：正常不需要手動改；老師若想強制某人立即登出（例如帳號被盜
   用），可以把這一列的數字改大（例如 +1），該使用者所有裝置的登入狀態會立刻失
   效，需要重新登入。
+- `CharacterSheet`：學生在「AI 作圖」頁填寫的角色設定小抄（外觀描述），每次生
+  成時會自動接在 Prompt 最前面，幫助同一個角色在故事不同頁面盡量長得一樣。學生
+  自己在頁面上編輯，老師通常不需要動這欄。
 
 ### Artworks（在舊欄位上新增）
 舊欄位不變：`ID, Timestamp, StudentName, ClassName, ImageURL, DriveBackupURL, Prompt, Description, AITool, Tags, Likes, Approved`
@@ -125,7 +130,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   | `AI_DEFAULT_RESET_HOUR` | 0 | 新帳號預設額度重置時間 |
   | `AI_MODEL` | gpt-image-1 | OpenAI 圖片模型 |
   | `AI_SIZE` | 1024x1024 | 圖片尺寸 |
-  | `AI_QUALITY` | standard | 圖片品質 |
+  | `AI_QUALITY` | medium | 圖片品質（gpt-image-1 系列只接受 low/medium/high/auto，不是 dall-e-3 那組 standard/hd） |
 
 ---
 
@@ -134,7 +139,11 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 - **審核新帳號**：`AuthorizedUsers` 分頁把 `Status` 從 `Pending` 改成 `Active`。
 - **審核投稿**：若該學生 `ArtworkAutoApprove` 不是 `TRUE`，投稿會在 `Artworks`
   分頁以 `Approved=FALSE` 出現，改成 `TRUE` 即上架（僅適用於 `public`／
-  `gallery_only`，私人作品不需要審核也不會公開）。
+  `gallery_only`，私人作品不需要審核也不會公開）。**注意：`Approved` 是在「投稿當
+  下」依那個時間點的 `ArtworkAutoApprove` 值決定的，之後才把 `ArtworkAutoApprove`
+  改成 `TRUE`，並不會讓已經送出、還在等待審核的舊投稿自動變成已上架**——需要老師
+  手動把那幾筆舊資料的 `Approved` 改成 `TRUE`，或請學生重新投稿一次。另外，帳號/
+  投稿相關的讀取有 15 秒的暫存（cache），手動改完 Sheet 後最多等 15 秒生效。
 - **調整每人 AI 額度**：`AuthorizedUsers` 分頁改該列的 `QuotaLimit` / `ResetHour`。
 - **手動結算故事接龍**：Apps Script 編輯器函式選單選：
   - `advanceStoryRoundForClass`：先在程式碼上方暫時改成
@@ -167,7 +176,43 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ---
 
-## 七、測試清單
+## 七、AI 作圖：角色一致性功能
+
+- **角色設定小抄（必填）**：學生在「AI 作圖」頁填一段角色外觀描述（例如：橘色短
+  毛貓、紅色圍巾），存進 `AuthorizedUsers.CharacterSheet`，之後每次生成都會自動
+  接在 Prompt 最前面。這是純文字拼接，能避免「同一隻貓一下橘色一下黑色」這種明
+  顯不一致，但無法保證每次構圖細節完全相同。
+- **參考圖（選填）**：學生可以從自己之前的作品裡選一張當「參考圖」，這時後端會
+  改呼叫 OpenAI 的 `/v1/images/edits`（而不是一般的 `/v1/images/generations`），
+  並帶入 `input_fidelity: "high"`，讓模型盡量保留參考圖的臉部/風格特徵，效果比
+  純文字提示更接近「同一個角色」。只允許選「自己名下的作品」或「別人已上架的公
+  開作品」當參考圖，不能拿別人的私人作品。
+- 兩者可以同時使用（角色小抄 + 參考圖），也可以只用其中一種。
+
+## 八、疑難排解：`Unexpected error while getting the method or property getFolderById on object DriveApp`
+
+如果 Script Property 裡的 `DRIVE_BACKUP_FOLDER_ID` 確認格式正確（純 ID、無網址前
+綴、無多餘空白），仍然出現這個錯誤，通常是 Apps Script 專案的**授權範圍
+（OAuth scope）不夠廣**，最常見在「後來才補上 Drive 相關程式碼」的專案上發生：
+
+1. Apps Script 編輯器左側齒輪「專案設定」→ 勾選「在編輯器中顯示
+   `appsscript.json` 資訊清單檔案」。
+2. 左側檔案列表會多出 `appsscript.json`，打開它，確認 `oauthScopes` 陣列裡有包
+   含 `"https://www.googleapis.com/auth/drive"`（完整雲端硬碟權限）。如果沒有，
+   手動加進陣列存檔。
+3. 存檔後回到任何一支函式（例如 `setupOrMigrate`），直接在編輯器「執行」一次
+   ——這時應該會跳出一個新的 Google 授權畫面，內容包含「查看、編輯、建立及刪除
+   你 Google 雲端硬碟中的所有檔案」，按下同意。
+4. 同意後再測試投稿或 AI 作圖，應該就能正常寫入 Drive 了。如果想確認是不是這個
+   問題，可以先貼一個小測試函式單獨執行看錯誤訊息：
+   ```js
+   function testDriveFolder() {
+     const folder = DriveApp.getFolderById(getProp_("DRIVE_BACKUP_FOLDER_ID", true));
+     Logger.log("資料夾名稱：" + folder.getName());
+   }
+   ```
+
+## 九、測試清單
 
 - [ ] 新帳號登入後狀態為 `Pending`，看到「等待審核」提示，無法投稿/故事接龍/AI
       作圖/建故事本
@@ -199,7 +244,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ---
 
-## 八、注意事項
+## 十、注意事項
 
 - 這是課堂教學工具，不是正式商用系統：Session 採用簽章 token（HMAC-SHA256 +
   Script Property 密鑰）而非第三方身份提供者的完整 session 管理；Google ID

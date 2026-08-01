@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS = {
   AI_DEFAULT_RESET_HOUR: 0, // Asia/Taipei
   AI_MODEL: "gpt-image-1",
   AI_SIZE: "1024x1024",
-  AI_QUALITY: "standard",
+  AI_QUALITY: "medium",
 };
 
 /* =========================================================================
@@ -59,8 +59,12 @@ const ARTWORK_HEADERS = [
 const USER_HEADERS = [
   "UserID", "GoogleSub", "Email", "StudentName", "Nickname", "ClassName", "Role",
   "Status", "ArtworkAutoApprove", "QuotaMode", "QuotaLimit", "ResetHour",
-  "SessionVersion", "CreatedAt", "ApprovedAt",
+  "SessionVersion", "CreatedAt", "ApprovedAt", "CharacterSheet",
 ];
+
+// Status 欄位的合法值清單，同時用來設定 Google Sheet 下拉選單（僅顯示警告，不會拒絕輸入，
+// 老師仍可打入清單外的文字，後端邏輯只認「Active」以外一律視為不可用）
+const STATUS_VALUES = ["Pending", "Active", "Disabled", "Suspended", "Inactive"];
 
 const COMMENT_HEADERS = ["ArtworkID", "CommenterName", "Comment", "Timestamp"];
 const STORY_CHAIN_HEADERS = [
@@ -352,6 +356,7 @@ function sanitizeUserForClient_(user) {
     role: user.Role || "student",
     quotaMode: user.QuotaMode || "count",
     quotaLimit: user.QuotaLimit,
+    characterSheet: user.CharacterSheet || "",
   };
 }
 
@@ -474,6 +479,22 @@ function handleAuthUpdateNickname_(body) {
     });
   }
   invalidateCache_(CONFIG.SHEET_ARTWORKS);
+
+  const updated = findUserById_(user.UserID);
+  return jsonOut_({ success: true, user: sanitizeUserForClient_(updated) });
+}
+
+/** 儲存學生的「角色設定小抄」（AI 作圖用，讓同一個角色在故事的不同頁面盡量長得一樣）。
+ *  存在 AuthorizedUsers 這個人自己的那一列，之後每次 AI 作圖頁載入都會自動帶出來。 */
+function handleAuthUpdateCharacterSheet_(body) {
+  const user = requireActiveUser_(body);
+  const characterSheet = String(body.characterSheet || "").trim().slice(0, 800);
+
+  const usersSheet = getSheet_(CONFIG.SHEET_USERS);
+  const rowNum = findRowByValue_(usersSheet, "UserID", user.UserID);
+  if (rowNum === -1) throw new Error("找不到你的帳號資料");
+  updateObjectRow_(usersSheet, rowNum, { CharacterSheet: characterSheet });
+  invalidateCache_(CONFIG.SHEET_USERS);
 
   const updated = findUserById_(user.UserID);
   return jsonOut_({ success: true, user: sanitizeUserForClient_(updated) });
@@ -1265,17 +1286,18 @@ function getQuotaDateKey_(now, resetHour) {
 }
 
 function findAIUsageRow_(userId, dateKey) {
-  const rows = sheetToObjects_(getSheet_(CONFIG.SHEET_AI_USAGE));
-  const idx = rows.findIndex((r) => String(r.UserID) === String(userId) && String(r.DateKey) === String(dateKey));
-  return { rows, idx };
+  const found = rowsWithLineNumbers_(getSheet_(CONFIG.SHEET_AI_USAGE)).find(
+    (r) => String(r.obj.UserID) === String(userId) && String(r.obj.DateKey) === String(dateKey)
+  );
+  return found ? { rowNum: found.rowNum, row: found.obj } : { rowNum: -1, row: null };
 }
 
 function computeQuotaSnapshot_(user) {
   const quotaLimit = Number(user.QuotaLimit);
   const resetHour = Number(user.ResetHour) || 0;
   const { dateKey, nextResetIso } = getQuotaDateKey_(new Date(), resetHour);
-  const { rows, idx } = findAIUsageRow_(user.UserID, dateKey);
-  const usedCount = idx === -1 ? 0 : Number(rows[idx].UsedCount || 0);
+  const { row } = findAIUsageRow_(user.UserID, dateKey);
+  const usedCount = row ? Number(row.UsedCount || 0) : 0;
   return { dateKey, nextResetIso, quotaLimit: isFinite(quotaLimit) ? quotaLimit : 5, usedCount, mode: user.QuotaMode || "count" };
 }
 
@@ -1295,17 +1317,15 @@ function reserveAiQuota_(user) {
     const resetHour = Number(user.ResetHour) || 0;
     const { dateKey } = getQuotaDateKey_(new Date(), resetHour);
     const sheet = getSheet_(CONFIG.SHEET_AI_USAGE);
-    const rows = sheetToObjects_(sheet);
-    const idx = rows.findIndex((r) => String(r.UserID) === String(user.UserID) && String(r.DateKey) === String(dateKey));
-    const used = idx === -1 ? 0 : Number(rows[idx].UsedCount || 0);
+    const { rowNum, row } = findAIUsageRow_(user.UserID, dateKey);
+    const used = row ? Number(row.UsedCount || 0) : 0;
 
     if (limit > 0 && used >= limit) return { ok: false, dateKey, rowNum: -1 };
 
-    if (idx === -1) {
+    if (rowNum === -1) {
       appendObjectRow_(sheet, { DateKey: dateKey, UserID: user.UserID, Mode: user.QuotaMode || "count", UsedCount: 1, InputTokens: 0, OutputTokens: 0, UpdatedAt: new Date() });
       return { ok: true, dateKey, rowNum: -1 };
     }
-    const rowNum = idx + 2;
     sheet.getRange(rowNum, colIndex_(sheet, "UsedCount")).setValue(used + 1);
     sheet.getRange(rowNum, colIndex_(sheet, "UpdatedAt")).setValue(new Date());
     return { ok: true, dateKey, rowNum };
@@ -1320,11 +1340,9 @@ function refundAiQuota_(userId, dateKey) {
   lock.waitLock(15000);
   try {
     const sheet = getSheet_(CONFIG.SHEET_AI_USAGE);
-    const rows = sheetToObjects_(sheet);
-    const idx = rows.findIndex((r) => String(r.UserID) === String(userId) && String(r.DateKey) === String(dateKey));
-    if (idx === -1) return;
-    const rowNum = idx + 2;
-    const current = Number(rows[idx].UsedCount || 0);
+    const { rowNum, row } = findAIUsageRow_(userId, dateKey);
+    if (rowNum === -1) return;
+    const current = Number(row.UsedCount || 0);
     sheet.getRange(rowNum, colIndex_(sheet, "UsedCount")).setValue(Math.max(0, current - 1));
   } finally {
     lock.releaseLock();
@@ -1334,16 +1352,35 @@ function refundAiQuota_(userId, dateKey) {
 function recordAiTokenUsage_(userId, dateKey, inputTokens, outputTokens) {
   if (!inputTokens && !outputTokens) return;
   const sheet = getSheet_(CONFIG.SHEET_AI_USAGE);
-  const rows = sheetToObjects_(sheet);
-  const idx = rows.findIndex((r) => String(r.UserID) === String(userId) && String(r.DateKey) === String(dateKey));
-  if (idx === -1) return;
-  const rowNum = idx + 2;
-  const curIn = Number(rows[idx].InputTokens || 0);
-  const curOut = Number(rows[idx].OutputTokens || 0);
+  const { rowNum, row } = findAIUsageRow_(userId, dateKey);
+  if (rowNum === -1) return;
+  const curIn = Number(row.InputTokens || 0);
+  const curOut = Number(row.OutputTokens || 0);
   updateObjectRow_(sheet, rowNum, {
     InputTokens: curIn + (Number(inputTokens) || 0),
     OutputTokens: curOut + (Number(outputTokens) || 0),
   });
+}
+
+/** 取出某件作品的圖片 Blob，作為 AI 圖片編輯（角色參考）的輸入。只允許：
+ *  自己名下的作品（任何可見度），或別人「公開」且已上架的作品——不允許讀取別人未公開/未審核的東西。 */
+function getReferenceImageBlob_(artworkId, user) {
+  const art = getArtworksAll_().find((a) => String(a.ID) === String(artworkId));
+  if (!art) throw new Error("找不到指定的參考作品");
+
+  const isOwner = String(art.OwnerUserID) === String(user.UserID);
+  const isPublicApproved = normalizeVisibility_(art.Visibility) === "public" && parseBoolean_(art.Approved);
+  if (!isOwner && !isPublicApproved) throw new Error("沒有權限使用這張作品當作參考圖");
+
+  if (art.DriveFileID) {
+    return DriveApp.getFileById(art.DriveFileID).getBlob();
+  }
+  if (art.ImageURL) {
+    const resp = UrlFetchApp.fetch(art.ImageURL, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) throw new Error("參考圖片下載失敗");
+    return resp.getBlob();
+  }
+  throw new Error("這張作品沒有可用的圖片資料");
 }
 
 function handleAiGenerate_(body) {
@@ -1351,6 +1388,8 @@ function handleAiGenerate_(body) {
   const prompt = String(body.prompt || "").trim();
   if (!prompt) throw new Error("請輸入 Prompt");
   if (prompt.length > 2000) throw new Error("Prompt 太長了，請精簡在 2000 字以內");
+
+  const referenceArtworkId = String(body.referenceArtworkId || "").trim();
 
   const reservation = reserveAiQuota_(user);
   if (!reservation.ok) throw new Error("你今天的 AI 作圖額度已經用完了，請明天再來，或請老師調整額度");
@@ -1362,13 +1401,34 @@ function handleAiGenerate_(body) {
     const size = settings.AI_SIZE || DEFAULT_SETTINGS.AI_SIZE;
     const quality = settings.AI_QUALITY || DEFAULT_SETTINGS.AI_QUALITY;
 
-    const resp = UrlFetchApp.fetch("https://api.openai.com/v1/images/generations", {
-      method: "post",
-      contentType: "application/json",
-      headers: { Authorization: "Bearer " + apiKey },
-      payload: JSON.stringify({ model, prompt, size, quality, n: 1 }),
-      muteHttpExceptions: true,
-    });
+    let resp;
+    if (referenceArtworkId) {
+      // 有選參考圖：走 /images/edits，帶 input_fidelity=high 盡量保留角色的臉部/風格特徵
+      const refBlob = getReferenceImageBlob_(referenceArtworkId, user);
+      resp = UrlFetchApp.fetch("https://api.openai.com/v1/images/edits", {
+        method: "post",
+        headers: { Authorization: "Bearer " + apiKey },
+        payload: {
+          model: model,
+          prompt: prompt,
+          size: size,
+          quality: quality,
+          input_fidelity: "high",
+          n: "1",
+          image: refBlob,
+        },
+        muteHttpExceptions: true,
+      });
+    } else {
+      // 沒有參考圖：走一般文字生成 /images/generations
+      resp = UrlFetchApp.fetch("https://api.openai.com/v1/images/generations", {
+        method: "post",
+        contentType: "application/json",
+        headers: { Authorization: "Bearer " + apiKey },
+        payload: JSON.stringify({ model, prompt, size, quality, n: 1 }),
+        muteHttpExceptions: true,
+      });
+    }
 
     if (resp.getResponseCode() !== 200) {
       let msg = "OpenAI 圖片產生失敗（HTTP " + resp.getResponseCode() + "）";
@@ -1448,6 +1508,7 @@ const POST_ACTIONS = {
   "auth/register": handleAuthRegister_,
   "auth/me": handleAuthMe_,
   "auth/updateNickname": handleAuthUpdateNickname_,
+  "auth/updateCharacterSheet": handleAuthUpdateCharacterSheet_,
   "auth/logout": handleAuthLogout_,
 
   "submit": handleSubmit_,
@@ -1511,6 +1572,20 @@ function ensureSheetWithHeaders_(ss, name, expectedHeaders) {
   return sheet;
 }
 
+/** 幫 AuthorizedUsers 的 Status 欄設定/更新下拉選單清單（僅顯示警告，setAllowInvalid(true)
+ *  代表老師仍可以直接打字打入清單外的任何文字，不會被卡住——後端邏輯本來就只認 "Active"，
+ *  這裡只是讓下拉選單的選項跟 README 描述的四種狀態一致，方便老師用點的而不必手動打字）。
+ *  可安全重複執行：每次都是整欄重新套用同一份清單，不影響儲存格裡既有的值。 */
+function applyStatusDataValidation_(usersSheet) {
+  const colIdx = colIndex_(usersSheet, "Status");
+  const numRows = Math.max(usersSheet.getMaxRows() - 1, 500);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(STATUS_VALUES, true)
+    .setAllowInvalid(true)
+    .build();
+  usersSheet.getRange(2, colIdx, numRows, 1).setDataValidation(rule);
+}
+
 /**
  * 🔧 部署後請先執行一次這個函式（Apps Script 編輯器上方函式選單選 setupOrMigrate → 執行）。
  * 之後每次程式更新想確保 Sheet 結構齊全，也可以放心重複執行，不會刪除或覆蓋任何既有資料。
@@ -1541,8 +1616,9 @@ function setupOrMigrate() {
   // 幫每一列補上必要的新欄位預設值，讓舊帳號至少能維持原本能瀏覽/投稿的狀態（沒有 GoogleSub 就無法登入，
   // 老師仍需請這些學生改用 Google 登入重新申請帳號一次，取得 UserID 才能使用新版所有功能）。
   const usersSheet = getSheet_(CONFIG.SHEET_USERS);
-  const userRows = sheetToObjects_(usersSheet);
-  userRows.forEach((row, i) => {
+  applyStatusDataValidation_(usersSheet);
+  const userRows = rowsWithLineNumbers_(usersSheet);
+  userRows.forEach(({ rowNum, obj: row }) => {
     const patch = {};
     if (!row.UserID) patch.UserID = uuid_();
     if (!row.Nickname) patch.Nickname = row.StudentName || "";
@@ -1552,25 +1628,25 @@ function setupOrMigrate() {
     if (row.QuotaLimit === "" || row.QuotaLimit === undefined) patch.QuotaLimit = DEFAULT_SETTINGS.AI_DEFAULT_QUOTA_LIMIT;
     if (row.ResetHour === "" || row.ResetHour === undefined) patch.ResetHour = DEFAULT_SETTINGS.AI_DEFAULT_RESET_HOUR;
     if (row.ArtworkAutoApprove === "" || row.ArtworkAutoApprove === undefined) patch.ArtworkAutoApprove = false;
-    if (Object.keys(patch).length) updateObjectRow_(usersSheet, i + 2, patch);
+    if (Object.keys(patch).length) updateObjectRow_(usersSheet, rowNum, patch);
   });
 
   // 既有 Artworks 若是舊格式，補上新欄位的合理預設值：沒有 OwnerUserID 代表是舊資料，
   // 一律視為 public（維持「舊資料相容」，畫廊照常顯示），AllowStory 預設允許（維持舊行為）。
   const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
-  const artRows = sheetToObjects_(artworksSheet);
-  artRows.forEach((row, i) => {
+  const artRows = rowsWithLineNumbers_(artworksSheet);
+  artRows.forEach(({ rowNum, obj: row }) => {
     const patch = {};
     if (row.Visibility === "" || row.Visibility === undefined) patch.Visibility = "public";
     if (row.AllowStory === "" || row.AllowStory === undefined) patch.AllowStory = true;
     if (row.Source === "" || row.Source === undefined) patch.Source = "User";
-    if (Object.keys(patch).length) updateObjectRow_(artworksSheet, i + 2, patch);
+    if (Object.keys(patch).length) updateObjectRow_(artworksSheet, rowNum, patch);
   });
 
   invalidateCache_(CONFIG.SHEET_USERS);
   invalidateCache_(CONFIG.SHEET_ARTWORKS);
   CacheService.getScriptCache().remove("SETTINGS_V1");
 
-  Logger.log("✅ setupOrMigrate 完成：所有分頁與欄位已確保存在，舊資料未被刪除或覆蓋。");
+  Logger.log("✅ setupOrMigrate 完成：所有分頁與欄位已確保存在，Status 下拉選單清單已更新，舊資料未被刪除或覆蓋。");
   return { success: true };
 }

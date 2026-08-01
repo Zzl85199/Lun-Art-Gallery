@@ -58,22 +58,29 @@ function initSubmitPage(root, user) {
       <div class="form-row">
         <label>圖片來源 *</label>
         <div class="btn-row" id="image-mode-tabs">
-          <button type="button" class="btn btn-outline-dark image-mode-btn active" data-mode="upload">📤 上傳圖片</button>
-          <button type="button" class="btn btn-outline-dark image-mode-btn" data-mode="url">🔗 網址匯入（相容舊流程）</button>
+          <button type="button" class="btn btn-outline-dark image-mode-btn active" data-mode="url">🔗 網址匯入（推薦，免上傳流量）</button>
+          <button type="button" class="btn btn-outline-dark image-mode-btn" data-mode="upload">📤 直接上傳圖片</button>
         </div>
       </div>
 
-      <div class="form-row" id="upload-mode-row">
+      <div class="form-row" id="upload-mode-row" style="display:none;">
         <label for="field-file">選擇圖片檔案 *</label>
         <input type="file" id="field-file" accept="image/*">
         <div class="form-hint">圖片會直接上傳到老師的 Google Drive，依照你選的「公開範圍」決定分享權限。</div>
         <img id="upload-preview" class="image-preview" alt="圖片預覽" style="display:none;">
       </div>
 
-      <div class="form-row" id="url-mode-row" style="display:none;">
+      <div class="form-row" id="url-mode-row">
         <label for="field-image-url">圖片網址 *</label>
-        <input type="url" id="field-image-url" placeholder="https://i.imgur.com/xxxxxxx.jpg">
-        <div class="form-hint">網址匯入的圖片會自動備份一份到 Google Drive，但因原始網址本身即公開，無法設為「私人」。</div>
+        <div class="form-hint" style="margin-bottom:8px;">
+          還沒有圖片網址嗎？先到免費圖床上傳圖片，複製「直接連結」後貼在下面：
+          <span class="btn-row" style="display:inline-flex;margin-left:6px;">
+            <button type="button" class="btn btn-outline-dark" id="open-meee-btn">🖼️ meee 圖床</button>
+            <button type="button" class="btn btn-outline-dark" id="open-imgur-btn">🖼️ Imgur</button>
+          </span>
+        </div>
+        <input type="url" id="field-image-url" placeholder="https://i.meee.com.tw/xxxxxxx.jpg">
+        <div class="form-hint">網址匯入的圖片會自動備份一份到 Google Drive，但因原始網址本身即公開，無法設為「私人」。適用於 meee、Imgur 等任何圖床，只要是「直接連結」（結尾通常是 .jpg/.png/.gif）都可以。</div>
         <div class="image-check" id="url-image-check"></div>
         <img id="url-preview" class="image-preview" alt="圖片預覽" style="display:none;">
       </div>
@@ -97,6 +104,7 @@ function initSubmitPage(root, user) {
       <div class="form-row">
         <label for="field-tags">標籤（用逗號分隔）</label>
         <input type="text" id="field-tags" placeholder="例如：奇幻, 風景, 貓咪">
+        <div class="tag-chip-row" id="common-tag-chips"></div>
       </div>
 
       <div class="form-row">
@@ -117,7 +125,14 @@ function initSubmitPage(root, user) {
   `;
 
   /* ---------------- 圖片來源分頁 ---------------- */
-  let imageMode = "upload";
+  document.getElementById("open-meee-btn").addEventListener("click", () => {
+    window.open("https://meee.com.tw/", "_blank");
+  });
+  document.getElementById("open-imgur-btn").addEventListener("click", () => {
+    window.open("https://imgur.com/upload", "_blank");
+  });
+
+  let imageMode = "url";
   const uploadRow = document.getElementById("upload-mode-row");
   const urlRow = document.getElementById("url-mode-row");
   document.querySelectorAll(".image-mode-btn").forEach((btn) => {
@@ -127,6 +142,24 @@ function initSubmitPage(root, user) {
       uploadRow.style.display = imageMode === "upload" ? "block" : "none";
       urlRow.style.display = imageMode === "url" ? "block" : "none";
       renderVisibilityOptions(); // 網址匯入模式要停用「私人」選項
+    });
+  });
+
+  /* ---------------- 常用標籤快選 ---------------- */
+  const COMMON_TAGS = ["奇幻", "風景", "人像", "動物", "科幻", "可愛", "水彩風", "像素風", "3D", "黑白", "復古", "日本", "街景", "動漫風"];
+  const tagsInput = document.getElementById("field-tags");
+  document.getElementById("common-tag-chips").innerHTML = COMMON_TAGS.map((t) => `<button type="button" class="tag-chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join("");
+  document.querySelectorAll(".tag-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const tag = chip.dataset.tag;
+      const current = tagsInput.value.split(/[,、]/).map((t) => t.trim()).filter(Boolean);
+      if (current.includes(tag)) {
+        chip.classList.remove("active");
+        tagsInput.value = current.filter((t) => t !== tag).join(", ");
+      } else {
+        chip.classList.add("active");
+        tagsInput.value = current.concat(tag).join(", ");
+      }
     });
   });
 
@@ -212,7 +245,7 @@ function initSubmitPage(root, user) {
         <label class="visibility-option ${disabled ? "disabled" : ""}">
           <input type="radio" name="visibility" value="${opt.value}" ${visibility === opt.value ? "checked" : ""} ${disabled ? "disabled" : ""}>
           <span>${opt.label}</span>
-          <small>${opt.hint}</small>
+          <span class="info-tooltip" tabindex="0">ⓘ<span class="tooltip-text">${escapeHtml(opt.hint)}</span></span>
         </label>
       `;
     }).join("");
