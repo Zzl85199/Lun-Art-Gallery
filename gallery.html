@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>畫廊 - AI 創作畫廊</title>
-<meta name="description" content="瀏覽全班同學的 AI 創作作品，可依班級、AI 工具、關鍵字篩選。">
+<meta name="description" content="瀏覽全班同學的 AI 創作作品，可依班級、暱稱、AI 工具、標籤、關鍵字篩選。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -17,9 +17,10 @@
     <a href="index.html" class="brand"><span class="brand-icon">🖍️</span> AI 創作畫廊<small>ㄚ倫老師魔法實驗室</small></a>
     <nav class="nav-tabs">
       <a class="nav-tab" data-page="home" href="index.html">首頁</a>
-      <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
+      <a class="nav-tab active" data-page="gallery" href="gallery.html">畫廊</a>
       <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
       <a class="nav-tab" data-page="story" href="story.html">故事接龍</a>
+      <a class="nav-tab" data-page="ai" href="ai.html">AI 作圖</a>
       <a class="nav-tab" data-page="about" href="about.html">關於</a>
     </nav>
   </div>
@@ -30,7 +31,7 @@
   <span class="hero-decor d2" style="font-size:1.6rem;">🌈</span>
   <div class="container">
     <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);">作品畫廊</h1>
-    <p class="hero-desc" style="margin-bottom:0;">全班同學的 AI 創作都釘在這裡，找找你喜歡的作品，幫他按個讚吧！</p>
+    <p class="hero-desc" style="margin-bottom:0;">全班同學的 AI 創作都釘在這裡（含公開與僅畫廊作品），找找你喜歡的作品，幫他按個讚吧！</p>
   </div>
 </section>
 <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -39,20 +40,7 @@
 
 <section class="board-section cork-bg">
   <div class="container">
-    <div class="filter-bar">
-      <span class="filter-label">篩選：</span>
-      <select id="filter-class" aria-label="依班級篩選">
-        <option value="">全部班級</option>
-      </select>
-      <select id="filter-student" aria-label="依學生篩選">
-        <option value="">全部學生</option>
-      </select>
-      <select id="filter-tool" aria-label="依 AI 工具篩選">
-        <option value="">全部 AI 工具</option>
-      </select>
-      <input type="text" id="filter-search" placeholder="搜尋姓名 / Prompt / 說明 / 標籤...">
-    </div>
-    <p class="result-count" id="result-count" style="color:#5b4f3f;"></p>
+    <div id="gallery-filter-mount"></div>
     <p style="text-align:center;margin:-6px 0 20px;">
       <span class="live-indicator"><span class="live-dot"></span>即時更新中，每 15 秒自動檢查新投稿與讚數</span>
     </p>
@@ -69,6 +57,8 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/main.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/gallery.js"></script>
 </body>
 </html>

@@ -2,18 +2,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   setActiveNav("gallery");
   renderFooterYear();
 
+  const filterMount = document.getElementById("gallery-filter-mount");
   const container = document.getElementById("gallery-grid");
-  const resultCountEl = document.getElementById("result-count");
-  const classFilter = document.getElementById("filter-class");
-  const studentFilter = document.getElementById("filter-student");
-  const toolFilter = document.getElementById("filter-tool");
-  const searchInput = document.getElementById("filter-search");
+  const filterBar = mountSharedFilterBar(filterMount, "gallery");
 
   renderStateMessage(container, { type: "loading", text: "正在整理公佈欄上的作品..." });
 
-  let allArtworks = [];          // 目前已知的完整作品清單
-  const artworkById = new Map(); // ID -> art 物件（同一個物件參考，供 modal 同步使用）
-  const cardById = new Map();    // ID -> 卡片 DOM 元素
+  let allArtworks = [];
+  const artworkById = new Map();
+  const cardById = new Map();
 
   async function initialLoad() {
     renderStateMessage(container, { type: "loading", text: "正在整理公佈欄上的作品..." });
@@ -21,7 +18,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const res = await Api.getArtworks();
       allArtworks = res.artworks || [];
       allArtworks.forEach((a) => artworkById.set(a.ID, a));
-      populateFilterOptions(allArtworks);
+      filterBar.refreshOptions(allArtworks);
       renderAll();
       startLivePolling();
     } catch (err) {
@@ -33,60 +30,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function populateFilterOptions(artworks) {
-    const classes = Array.from(new Set(artworks.map((a) => a.ClassName).filter(Boolean))).sort();
-    const tools = Array.from(new Set(artworks.map((a) => a.AITool).filter(Boolean))).sort();
-
-    const prevClass = classFilter.value;
-    const prevTool = toolFilter.value;
-    const prevStudent = studentFilter.value;
-
-    classFilter.innerHTML =
-      `<option value="">全部班級</option>` +
-      classes.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-    toolFilter.innerHTML =
-      `<option value="">全部 AI 工具</option>` +
-      tools.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
-
-    // 保留使用者原本選擇的篩選條件（如果該選項還存在）
-    if (classes.includes(prevClass)) classFilter.value = prevClass;
-    if (tools.includes(prevTool)) toolFilter.value = prevTool;
-
-    populateStudentOptions(artworks, prevStudent);
-  }
-
-  /** 學生下拉選單會依目前選到的班級連動：先選班級可縮小姓名清單，也可以不選班級直接找全班的人 */
-  function populateStudentOptions(artworks, prevStudent) {
-    const cls = classFilter.value;
-    const pool = cls ? artworks.filter((a) => a.ClassName === cls) : artworks;
-    const students = Array.from(new Set(pool.map((a) => a.StudentName).filter(Boolean))).sort();
-
-    studentFilter.innerHTML =
-      `<option value="">全部學生</option>` +
-      students.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
-
-    if (students.includes(prevStudent)) studentFilter.value = prevStudent;
-  }
-
-  function matchesFilter(a) {
-    const cls = classFilter.value;
-    const student = studentFilter.value;
-    const tool = toolFilter.value;
-    const q = searchInput.value.trim().toLowerCase();
-    if (cls && a.ClassName !== cls) return false;
-    if (student && a.StudentName !== student) return false;
-    if (tool && a.AITool !== tool) return false;
-    if (q) {
-      const haystack = [a.StudentName, a.Prompt, a.Description, a.Tags].join(" ").toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    return true;
-  }
-
-  /** 全量重新渲染（篩選條件改變、或初次載入時使用） */
   function renderAll() {
-    const filtered = allArtworks.filter(matchesFilter);
-    resultCountEl.textContent = `共 ${filtered.length} 件作品`;
+    const filtered = allArtworks.filter((a) => filterBar.matches(a));
+    filterBar.countEl.textContent = `共 ${filtered.length} 件作品`;
 
     cardById.clear();
     if (!filtered.length) {
@@ -95,13 +41,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     container.innerHTML = "";
     filtered.forEach((art) => {
-      const card = createNoteCardEl(art);
+      const card = createNoteCardEl(art, { showVisibilityBadge: true, onTagClick: (tag) => filterBar.setTag(tag) });
       cardById.set(art.ID, card);
       container.appendChild(card);
     });
   }
 
-  /** 即時輪詢：抓最新清單，跟畫面上現有的做差異比對，只增/刪/更新有變化的部分 */
   function startLivePolling() {
     createPoller(async () => {
       const res = await Api.getArtworks();
@@ -109,30 +54,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       const latestIds = new Set(latest.map((a) => a.ID));
       let hasNewOrRemoved = false;
 
-      // 1. 處理刪除／下架的作品
       for (const id of Array.from(artworkById.keys())) {
         if (!latestIds.has(id)) {
           artworkById.delete(id);
           const card = cardById.get(id);
-          if (card) {
-            card.remove();
-            cardById.delete(id);
-          }
+          if (card) { card.remove(); cardById.delete(id); }
           allArtworks = allArtworks.filter((a) => a.ID !== id);
           hasNewOrRemoved = true;
         }
       }
 
-      // 2. 處理新增與更新（讚數變化）
       latest.forEach((art) => {
         const existing = artworkById.get(art.ID);
         if (!existing) {
-          // 全新作品：加入資料，若符合目前篩選條件就插入畫面最前面並淡入強調
           artworkById.set(art.ID, art);
           allArtworks.unshift(art);
           hasNewOrRemoved = true;
-          if (matchesFilter(art)) {
-            const card = createNoteCardEl(art);
+          if (filterBar.matches(art)) {
+            const card = createNoteCardEl(art, { showVisibilityBadge: true, onTagClick: (tag) => filterBar.setTag(tag) });
             cardById.set(art.ID, card);
             container.prepend(card);
             flashNewCard(card);
@@ -145,27 +84,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       if (hasNewOrRemoved) {
-        populateFilterOptions(allArtworks);
-        resultCountEl.textContent = `共 ${allArtworks.filter(matchesFilter).length} 件作品`;
-        // 若目前清單是「空狀態」畫面，且現在有新作品符合篩選，重新整體渲染一次
-        if (container.querySelector(".state-msg") && allArtworks.some(matchesFilter)) {
+        filterBar.refreshOptions(allArtworks);
+        filterBar.countEl.textContent = `共 ${allArtworks.filter((a) => filterBar.matches(a)).length} 件作品`;
+        if (container.querySelector(".state-msg") && allArtworks.some((a) => filterBar.matches(a))) {
           renderAll();
         }
       }
     }, 15000);
   }
 
-  classFilter.addEventListener("change", () => {
-    populateStudentOptions(allArtworks, ""); // 換班級時，姓名清單要重新縮小，並清空原本選的姓名
-    renderAll();
-  });
-  studentFilter.addEventListener("change", renderAll);
-  toolFilter.addEventListener("change", renderAll);
-  let debounceTimer;
-  searchInput.addEventListener("input", () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(renderAll, 200);
-  });
-
+  filterBar.onChange(renderAll);
   initialLoad();
 });

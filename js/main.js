@@ -26,6 +26,12 @@ function renderFooterYear() {
   if (el) el.textContent = new Date().getFullYear();
 }
 
+function visibilityLabel(vis) {
+  if (vis === "private") return "🔒 私人";
+  if (vis === "gallery_only") return "🖼️ 僅畫廊";
+  return "🌍 公開";
+}
+
 /**
  * 設定圖片來源與失敗時的備援流程：
  * 1. 沒有圖片連結 → 直接顯示可愛的「尚無圖片」預留圖示，不嘗試載入、不會出現破圖
@@ -57,38 +63,38 @@ function setupImageWithFallback(imgEl, placeholderEl, url, backupUrl) {
   };
 }
 
-/** 建立一張作品便條紙卡片 DOM */
-function createNoteCardEl(art) {
+/** 建立一張作品便條紙卡片 DOM。art 需為 sanitizeArtworkPublic_/OwnerView_ 回傳格式（含 DisplayName）。 */
+function createNoteCardEl(art, opts) {
+  opts = opts || {};
   const card = document.createElement("div");
   card.className = "note-card";
   card.tabIndex = 0;
   card.setAttribute("role", "button");
-  card.setAttribute("aria-label", `查看 ${art.StudentName} 的作品`);
-  card.dataset.artworkId = art.ID; // 供即時更新時查找對應卡片
+  card.setAttribute("aria-label", `查看 ${art.DisplayName} 的作品`);
+  card.dataset.artworkId = art.ID;
+
+  const imgSrc = Api.resolveImageSrc(art);
+  const showVisibilityBadge = opts.showVisibilityBadge && art.Visibility;
 
   card.innerHTML = `
     <span class="pin"></span>
     <span class="sticker"></span>
     <span class="tape-corner"></span>
     <div class="note-thumb-wrap">
-      <img loading="lazy" alt="${escapeHtml(art.StudentName)} 的 AI 作品">
+      <img loading="lazy" alt="${escapeHtml(art.DisplayName)} 的 AI 作品">
       <div class="no-image-placeholder">
         <span class="no-image-icon">🖼️</span>
         <span>尚無圖片</span>
       </div>
+      ${showVisibilityBadge ? `<span class="visibility-badge">${visibilityLabel(art.Visibility)}</span>` : ""}
     </div>
     <div class="note-meta-row">
-      <span class="note-student">${escapeHtml(art.StudentName)}</span>
+      <span class="note-student">${escapeHtml(art.DisplayName)}</span>
       <span class="note-class">${escapeHtml(art.ClassName)}</span>
     </div>
     <div class="note-tags">
       ${art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
-      ${(art.Tags || "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((t) => `<span class="tag-chip">#${escapeHtml(t)}</span>`)
-        .join("")}
+      ${parseArtTags(art).map((t) => `<span class="tag-chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</span>`).join("")}
     </div>
     <div class="note-footer-row">
       <span class="like-count">♥ ${Number(art.Likes || 0)}</span>
@@ -97,11 +103,18 @@ function createNoteCardEl(art) {
 
   const img = card.querySelector("img");
   const placeholder = card.querySelector(".no-image-placeholder");
-  setupImageWithFallback(img, placeholder, art.ImageURL, art.DriveBackupURL);
+  setupImageWithFallback(img, placeholder, imgSrc, art.DriveBackupURL);
 
   attachTiltEffect(card);
 
-  card.addEventListener("click", () => openArtworkModal(art));
+  card.addEventListener("click", (e) => {
+    if (e.target.closest(".tag-chip") && opts.onTagClick) {
+      e.stopPropagation();
+      opts.onTagClick(e.target.closest(".tag-chip").dataset.tag);
+      return;
+    }
+    openArtworkModal(art);
+  });
   card.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -118,34 +131,26 @@ function createNoteCardEl(art) {
  */
 function attachTiltEffect(card) {
   const MAX_TILT = 10; // 度數上限，避免歪太誇張
-  const baseRotate = parseFloat(getComputedStyle(card).getPropertyValue("--base-rotate")) || 0;
-
   function handleMove(e) {
     if (e.pointerType === "touch") return;
     const rect = card.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;  // 0~1
-    const y = (e.clientY - rect.top) / rect.height;  // 0~1
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
     const rotateY = (x - 0.5) * MAX_TILT * 2;
     const rotateX = (0.5 - y) * MAX_TILT * 2;
     card.style.transform = `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px) scale(1.03)`;
   }
-
-  function reset() {
-    card.style.transform = "";
-  }
-
+  function reset() { card.style.transform = ""; }
   card.addEventListener("pointermove", handleMove);
   card.addEventListener("pointerleave", reset);
   card.addEventListener("pointercancel", reset);
 }
 
-/** 幫新加入的卡片加一個短暫的「剛剛送達」淡入強調效果 */
 function flashNewCard(cardEl) {
   cardEl.classList.add("note-card-new");
   setTimeout(() => cardEl.classList.remove("note-card-new"), 1600);
 }
 
-/** 更新畫面上所有符合此 ID 的卡片讚數顯示（首頁精選區、畫廊區都可能同時存在） */
 function updateNoteCardLikesInDom(artworkId, likes) {
   document.querySelectorAll(`.note-card[data-artwork-id="${artworkId}"] .like-count`).forEach((el) => {
     el.textContent = `♥ ${Number(likes)}`;
@@ -159,23 +164,13 @@ function updateNoteCardLikesInDom(artworkId, likes) {
    =================================================================== */
 function createPoller(fn, intervalMs) {
   let timer = null;
-
   async function tick() {
     if (document.hidden) return;
-    try {
-      await fn();
-    } catch (err) {
-      console.warn("輪詢更新失敗：", err.message);
-    }
+    try { await fn(); } catch (err) { console.warn("輪詢更新失敗：", err.message); }
   }
-
-  function onVisibilityChange() {
-    if (!document.hidden) tick();
-  }
-
+  function onVisibilityChange() { if (!document.hidden) tick(); }
   document.addEventListener("visibilitychange", onVisibilityChange);
   timer = setInterval(tick, intervalMs);
-
   return {
     stop() {
       clearInterval(timer);
@@ -184,7 +179,6 @@ function createPoller(fn, intervalMs) {
   };
 }
 
-/** 渲染狀態訊息（載入中 / 錯誤 / 空清單） */
 function renderStateMessage(container, { type, text, onRetry }) {
   container.innerHTML = "";
   const wrap = document.createElement("div");
@@ -260,9 +254,7 @@ function ensureModalExists() {
   document.body.appendChild(overlay);
 
   overlay.querySelector(".modal-close").addEventListener("click", closeModal);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeModal();
-  });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && overlay.classList.contains("open")) closeModal();
   });
@@ -274,25 +266,18 @@ function closeModal() {
   const overlay = document.getElementById("artwork-modal");
   if (overlay) overlay.classList.remove("open");
   currentModalArtwork = null;
-  if (modalPoller) {
-    modalPoller.stop();
-    modalPoller = null;
-  }
+  if (modalPoller) { modalPoller.stop(); modalPoller = null; }
 }
 
-/** 當畫廊 / 首頁輪詢偵測到讚數變化時，如果剛好開著這件作品的 modal，也同步更新數字 */
 function syncModalLikesIfOpen(artworkId, likes) {
   if (!currentModalArtwork || currentModalArtwork.ID !== artworkId) return;
   currentModalArtwork.Likes = likes;
   const el = document.getElementById("modal-like-count");
   if (el) el.textContent = `${Number(likes)} 人按讚`;
 }
+
 function likedArtworkIds() {
-  try {
-    return JSON.parse(localStorage.getItem("likedArtworkIds") || "[]");
-  } catch (e) {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem("likedArtworkIds") || "[]"); } catch (e) { return []; }
 }
 
 function markArtworkLiked(id) {
@@ -310,21 +295,16 @@ async function openArtworkModal(art) {
 
   const img = document.getElementById("modal-img");
   const imgPlaceholder = document.getElementById("modal-img-placeholder");
-  img.alt = art.StudentName + " 的 AI 作品";
-  setupImageWithFallback(img, imgPlaceholder, art.ImageURL, art.DriveBackupURL);
+  img.alt = art.DisplayName + " 的 AI 作品";
+  setupImageWithFallback(img, imgPlaceholder, Api.resolveImageSrc(art), art.DriveBackupURL);
 
-  document.getElementById("modal-title").textContent = art.StudentName;
-  document.getElementById("modal-sub").textContent = `${art.ClassName} · ${new Date(
-    art.Timestamp
-  ).toLocaleDateString("zh-TW")}`;
+  document.getElementById("modal-title").textContent = art.DisplayName;
+  document.getElementById("modal-sub").textContent = `${art.ClassName} · ${new Date(art.Timestamp).toLocaleDateString("zh-TW")}${
+    art.Visibility ? " · " + visibilityLabel(art.Visibility) : ""
+  }`;
   document.getElementById("modal-tags").innerHTML = `
     ${art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
-    ${(art.Tags || "")
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => `<span class="tag-chip">#${escapeHtml(t)}</span>`)
-      .join("")}
+    ${parseArtTags(art).map((t) => `<span class="tag-chip">#${escapeHtml(t)}</span>`).join("")}
   `;
   document.getElementById("modal-prompt").textContent = art.Prompt || "（未提供 Prompt）";
   document.getElementById("modal-desc").textContent = art.Description || "（未提供說明）";
@@ -348,9 +328,8 @@ async function openArtworkModal(art) {
     lastCommentSignature = commentSignature_(res.comments || []);
     renderComments(res.comments || []);
   } catch (err) {
-    document.getElementById(
-      "modal-comments-list"
-    ).innerHTML = `<div style="color:#a8402f;font-size:0.88rem;">留言載入失敗：${escapeHtml(err.message)}</div>`;
+    document.getElementById("modal-comments-list").innerHTML =
+      `<div style="color:#a8402f;font-size:0.88rem;">留言載入失敗：${escapeHtml(err.message)}</div>`;
   }
 
   if (modalPoller) modalPoller.stop();
@@ -397,7 +376,7 @@ async function handleLikeClick(art) {
     document.getElementById("modal-like-count").textContent = `${newCount} 人按讚`;
     likeBtn.textContent = "已按讚";
     markArtworkLiked(art.ID);
-    updateNoteCardLikesInDom(art.ID, newCount); // 同步更新畫面上對應卡片的讚數
+    updateNoteCardLikesInDom(art.ID, newCount);
   } catch (err) {
     likeBtn.disabled = false;
     likeBtn.textContent = "♥ 按讚";

@@ -12,14 +12,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const artworks = res.artworks || [];
 
     if (!artworks.length) {
-      renderStateMessage(container, {
-        type: "empty",
-        text: "公佈欄還空空的，快來當第一個投稿的人吧！",
-      });
+      renderStateMessage(container, { type: "empty", text: "公佈欄還空空的，快來當第一個投稿的人吧！" });
       return;
     }
 
-    // 隨機挑選最多 6 件作品（每次重新整理才會換一批，避免瀏覽中一直跳動）
     const shuffled = [...artworks].sort(() => Math.random() - 0.5);
     const featured = shuffled.slice(0, Math.min(6, shuffled.length));
 
@@ -38,7 +34,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  /** 首頁只做讚數即時同步，不重排精選卡片，避免使用者瀏覽時版面跳動 */
   function startLikeSync() {
     createPoller(async () => {
       const res = await Api.getArtworks();

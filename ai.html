@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>我要投稿 - AI 創作畫廊</title>
-<meta name="description" content="投稿你的 AI 創作作品到班級畫廊，需先登入。">
+<title>AI 作圖 - AI 創作畫廊</title>
+<meta name="description" content="輸入 Prompt，讓 AI 直接幫你畫一張圖。需要登入才能使用，每日有使用額度限制。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -18,15 +18,15 @@
     <nav class="nav-tabs">
       <a class="nav-tab" data-page="home" href="index.html">首頁</a>
       <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
-      <a class="nav-tab active" data-page="submit" href="submit.html">我要投稿</a>
+      <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
       <a class="nav-tab" data-page="story" href="story.html">故事接龍</a>
-      <a class="nav-tab" data-page="ai" href="ai.html">AI 作圖</a>
+      <a class="nav-tab active" data-page="ai" href="ai.html">AI 作圖</a>
       <a class="nav-tab" data-page="about" href="about.html">關於</a>
     </nav>
   </div>
 </header>
 
-<div class="container submit-wrap" id="submit-gate"></div>
+<div class="container submit-wrap" id="ai-gate"></div>
 
 <footer class="site-footer">
   <div class="container">
@@ -37,8 +37,7 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/main.js"></script>
-<script src="js/filters.js"></script>
 <script src="js/auth.js"></script>
-<script src="js/submit.js"></script>
+<script src="js/ai.js"></script>
 </body>
 </html>

@@ -1561,3 +1561,102 @@ button {
   border-style: solid;
   background: #fff;
 }
+
+/* ===================================================================
+   v2 新增樣式：登入狀態、隱私可見度、投稿頁上傳/我的投稿、
+   故事接龍即時票況、榮譽榜、故事本頁籤
+   =================================================================== */
+
+.auth-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  flex-wrap: wrap;
+}
+.auth-nickname {
+  color: #f5f1e6;
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+.google-signin-btn { display: inline-block; }
+
+.visibility-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  z-index: 2;
+}
+
+.visibility-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.visibility-option {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--kraft);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.visibility-option input { margin: 0; }
+.visibility-option small { color: var(--ink-soft); flex-basis: 100%; }
+.visibility-option.disabled { opacity: 0.45; cursor: not-allowed; }
+
+.image-mode-btn.active { background: var(--pushpin-blue); color: #fff; }
+
+.my-submissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+.submission-card { text-align: left; }
+.form-msg-inline {
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  margin-top: 6px;
+  color: var(--ink-soft);
+}
+
+.standings-list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; margin: 0 auto; }
+.standings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: var(--shadow-soft);
+}
+.standings-rank { width: 28px; text-align: center; font-weight: 700; }
+.standings-thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.standings-name { flex: 1; font-family: var(--font-hand); }
+.standings-votes { color: var(--ink-soft); font-size: 0.85rem; white-space: nowrap; }
+
+.honor-round { max-width: 720px; margin: 0 auto 18px; }
+.honor-round-date { text-align: center; color: var(--ink-soft); font-size: 0.85rem; margin-bottom: 8px; }
+.honor-round-entries { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.honor-entry {
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  box-shadow: var(--shadow-soft);
+  width: 120px;
+}
+.honor-entry img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; margin-bottom: 6px; }
+.honor-rank { font-size: 1.3rem; }
+.honor-name { display: block; font-family: var(--font-hand); font-size: 0.85rem; }
+.honor-votes { display: block; color: var(--ink-soft); font-size: 0.75rem; }
+
+#book-tabs .book-tab-btn { font-family: var(--font-hand); }
+.save-status { min-height: 1.4em; }

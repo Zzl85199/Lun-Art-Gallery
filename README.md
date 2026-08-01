@@ -1,246 +1,212 @@
-# AI 創作畫廊
+# AI 創作畫廊（ㄚ倫老師魔法實驗室）v2
 
-一個「教室黑板布告欄 / 軟木塞公佈欄」風格的靜態網站，用來展示學生的 AI 生成作品。
-完全免費運作：前端是純 HTML/CSS/JS，資料庫是 Google Sheet，後端是 Google Apps Script，圖片放 Imgur（並自動備份到 Google Drive）。
+純 HTML/CSS/JS 前端 + Google Apps Script 後端 + Google Sheet/Drive 儲存，
+不需要 Node 後端、Firebase 或任何額外付費資料庫。
 
----
-
-## 專案結構
-
-```
-ai-gallery/
-├── index.html          # 首頁
-├── gallery.html        # 畫廊頁（篩選、搜尋）
-├── submit.html         # 我要投稿頁
-├── about.html          # 關於頁
-├── css/
-│   └── style.css       # 全站樣式（黑板 + 軟木塞風格）
-├── js/
-│   ├── config.js       # 設定檔（Apps Script 網址、班級/AI工具清單）
-│   ├── api.js          # 呼叫 Apps Script 的 API 封裝
-│   ├── main.js         # 共用邏輯：卡片渲染、Modal、按讚、留言
-│   ├── home.js         # 首頁專用
-│   ├── gallery.js      # 畫廊頁專用
-│   └── submit.js       # 投稿頁專用
-├── apps-script/
-│   └── Code.gs          # 貼到 Google Apps Script 的後端程式碼
-└── README.md
-```
+v2 新增：Google 登入（Google Identity Services）、後端驗證 ID Token、簽章 session
+token、圖片直接上傳 Google Drive（含公開/僅畫廊/私人三種可見度）、每班獨立的故事
+接龍投票與榮譽榜、雲端保存可跨裝置的故事本、AI 作圖（OpenAI Images API）與每日
+額度。舊資料與舊版 Sheet 欄位完全相容，`setupOrMigrate()` 只會新增缺少的欄位/分
+頁，不會刪除或覆蓋既有資料。
 
 ---
 
-## 第一步：建立 Google Sheet 資料庫
+## 一、Google Sheet 與 Apps Script
 
-1. 到 [Google Sheets](https://sheets.google.com) 建立一份新的試算表，命名為「AI創作畫廊資料庫」之類的名稱。
-2. 建立 **三個分頁（tab）**，分頁名稱與欄位順序請完全照抄（大小寫也要一致，因為程式碼會用欄位名稱對應）：
+1. 建立一份新的 Google Sheet（或沿用你原本的那份）。
+2. 「擴充功能 → Apps Script」，把 `apps-script/Code.gs` 的內容整份貼進去（綁定腳
+   本，會自動抓到目前這份 Sheet）。
+3. 左側齒輪圖示「專案設定」→ 時區改成 `(GMT+08:00) 台北時間`（讓每日結算/AI 額度
+   重置時間準確落在 Asia/Taipei）。
+4. 左側齒輪圖示「指令碼屬性」（Script Properties），新增以下四筆：
 
-### 分頁 1：`Artworks`
+   | 屬性名稱 | 說明 |
+   |---|---|
+   | `GOOGLE_CLIENT_ID` | 見下方「二、Google 登入設定」 |
+   | `SESSION_SECRET` | 任意一長串英數亂碼（例如用密碼產生器產生 32+ 字元），用來簽署網站自己的登入 session token，**不要外流** |
+   | `OPENAI_API_KEY` | 你的 OpenAI API Key（只用於 AI 作圖；不需要 AI 作圖功能可先留空，但 AI 作圖頁會顯示錯誤） |
+   | `DRIVE_BACKUP_FOLDER_ID` | 圖片上傳/備份用的 Google Drive 資料夾 ID（資料夾網址 `.../folders/XXXXXXXX` 裡的 `XXXXXXXX`） |
 
-| ID | Timestamp | StudentName | ClassName | ImageURL | DriveBackupURL | Prompt | Description | AITool | Tags | Likes | Approved |
-|----|-----------|-------------|-----------|----------|----------------|--------|--------------|--------|------|-------|----------|
+5. 上方函式下拉選單選 **`setupOrMigrate`**，按「執行」一次。第一次執行會跳出授權
+   畫面，需同意 Google Sheets / Drive 的存取權限。執行完成後，所有分頁與欄位都會
+   建立好（詳見下方「分頁結構」）。
+6. 「部署 → 新增部署作業」→ 類型選「網頁應用程式」：
+   - 執行身分：**我**
+   - 具有存取權的使用者：**任何人**
+7. 部署完成會拿到一個網址（結尾是 `/exec`），把它填入 `js/config.js` 的
+   `APPS_SCRIPT_URL`。
 
-這個分頁**不需要手動填資料**，投稿表單送出後會自動寫入。
-
-### 分頁 2：`AuthorizedUsers`
-
-| StudentName | ClassName | Status | AutoApprove |
-|-------------|-----------|--------|-------------|
-
-老師要手動維護這個分頁：
-- 想授權某學生（或老師）可以投稿，就新增一列，`Status` 填 `Active`。
-- 想撤銷投稿權限，把 `Status` 改成 `Inactive`（或直接刪除該列）。
-- `AutoApprove` 填 `TRUE`：該學生投稿後**直接上架**，不需要審核。
-- `AutoApprove` 填 `FALSE`：該學生投稿後會先進入**待審核**狀態，要老師手動把 `Artworks` 分頁裡對應那一列的 `Approved` 改成 `TRUE` 才會顯示在畫廊。
-
-範例：
-
-| StudentName | ClassName | Status | AutoApprove |
-|-------------|-----------|--------|-------------|
-| 王小明 | 七年一班 | Active | TRUE |
-| 陳小美 | 七年一班 | Active | FALSE |
-| 李老師 | 七年一班 | Active | TRUE |
-
-### 分頁 3：`Comments`
-
-| ArtworkID | CommenterName | Comment | Timestamp |
-|-----------|----------------|---------|-----------|
-
-這個分頁也不需要手動填，留言會自動寫入。
-
-> 💡 小技巧：你也可以不手動打表頭，改用 Apps Script 裡內建的 `setupSheets_()` 函式（見下方步驟 5）自動建立三個分頁與表頭。
+之後每次修改 `Code.gs`，都要「部署 → 管理部署作業 → 編輯（鉛筆圖示）→ 版本選新
+版本 → 部署」，網址通常不會變，但版本一定要更新，否則改的程式碼不會生效。
 
 ---
 
-## 第二步：建立 Google Drive 圖片備份資料夾
+## 二、Google 登入設定
 
-1. 到 [Google Drive](https://drive.google.com) 新增一個資料夾，例如「AI畫廊圖片備份」。
-2. 打開這個資料夾，網址列會顯示類似：
-   `https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz`
-   後面那串 `1AbCdEfGhIjKlMnOpQrStUvWxYz` 就是資料夾 ID，先複製起來待會會用到。
-3. 資料夾權限不需要另外設定「知道連結的使用者可檢視」——Apps Script 會針對**每一個備份檔案**自動設定為「知道連結的使用者可檢視」，資料夾本身維持預設（僅擁有者）即可，比較安全。
-
----
-
-## 第三步：部署 Google Apps Script 後端
-
-1. 打開你剛建立的 Google Sheet，點選選單「**擴充功能 → Apps Script**」，會開啟一個新的 Apps Script 專案（這種寫法叫「綁定腳本」，程式碼會自動對應到目前這份 Sheet，不需要填 Sheet ID）。
-2. 把預設的 `Code.gs` 裡的內容全部刪除，貼上本專案 `apps-script/Code.gs` 的完整內容。
-3. 找到程式碼開頭的：
-   ```js
-   const CONFIG = {
-     ...
-     DRIVE_BACKUP_FOLDER_ID: "PASTE_YOUR_DRIVE_FOLDER_ID_HERE",
-   };
-   ```
-   把 `PASTE_YOUR_DRIVE_FOLDER_ID_HERE` 換成第二步拿到的資料夾 ID。
-4. （選用）如果你的 Sheet 分頁還沒有建立表頭，可以在 Apps Script 編輯器上方的函式下拉選單選擇 `setupSheets_`，按「執行」，它會自動幫你建立三個分頁與正確的表頭。第一次執行會跳出授權畫面，請同意權限。
-5. 點右上角「**部署 → 新增部署作業**」：
-   - 類型選擇「**網頁應用程式**」
-   - 說明可填「AI畫廊後端 v1」
-   - **執行身分**：選「**我**」（這樣才能用你的權限存取 Sheet 與 Drive）
-   - **具有存取權的使用者**：選「**任何人**」（這樣學生和訪客才能不用登入 Google 就能讀取/投稿）
-   - 按「部署」
-6. 第一次部署會要求授權，會跳出如下畫面：
-   - 選擇你的 Google 帳號
-   - 出現「未經驗證」警告時，點「進階」→「前往（專案名稱）(不安全)」（這是正常的，因為這是你自己寫的腳本，Google 對所有個人開發的 Apps Script 都會顯示這個警告）
-   - 同意以下權限：
-     - 查看、編輯、建立及刪除你的 Google 試算表
-     - 查看、編輯、建立及刪除你在 Google 雲端硬碟中的檔案
-     - 以 Web 應用程式的形式連線至外部服務（因為要用 `UrlFetchApp` 抓取 Imgur 圖片）
-7. 部署完成後，會顯示一個網址，格式類似：
-   ```
-   https://script.google.com/macros/s/AKfycbxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec
-   ```
-   複製這個網址（結尾是 `/exec`）。
-
-> ⚠️ 之後如果你修改了 `Code.gs` 程式碼，記得要「部署 → 管理部署作業 → 點編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」，否則改動不會生效。單純儲存檔案（Ctrl+S）不會更新已部署的網址。
+1. 前往 [Google Cloud Console](https://console.cloud.google.com/) 建立一個專案
+   （或沿用現有專案）。
+2. 「API 和服務 → OAuth 同意畫面」：設定為「外部」，填基本資訊即可（測試階段可
+   把老師/學生 Google 帳號加入「測試使用者」名單，或發布成正式版供任何 Google
+   帳號登入，發布前請先確認學校的 Google Workspace 網域政策）。
+3. 「API 和服務 → 憑證 → 建立憑證 → OAuth 用戶端 ID」：
+   - 應用程式類型：**網頁應用程式**
+   - 「已授權的 JavaScript 來源」：填你網站實際的網域，例如：
+     - `https://your-username.github.io`（GitHub Pages）
+     - 或你自己的網域 `https://your-domain.com`
+     - 本機測試也可以加 `http://localhost:5500` 之類的網址
+   - 不需要填「已授權的重新導向 URI」（GIS 用的是 One Tap / 按鈕流程，不是傳統
+     redirect flow）
+4. 建立後會拿到一組 `xxxxxxxx.apps.googleusercontent.com` 的用戶端 ID：
+   - 貼到前端 `js/config.js` 的 `GOOGLE_CLIENT_ID`
+   - 貼到 Apps Script 的 Script Property `GOOGLE_CLIENT_ID`（兩邊要填**同一組**）
 
 ---
 
-## 第四步：設定前端
-
-打開 `js/config.js`，把 `APPS_SCRIPT_URL` 換成第三步拿到的網址：
+## 三、前端設定（`js/config.js`）
 
 ```js
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxxxxxxxxxxxx/exec",
+  APPS_SCRIPT_URL: "貼上你的 /exec 網址",
+  GOOGLE_CLIENT_ID: "貼上你的 xxxxxxxx.apps.googleusercontent.com",
   ...
 };
 ```
 
-你也可以在這裡調整：
-- `SITE_TITLE`：網站標題
-- `CLASSES`：投稿表單的班級下拉選單選項
-- `AI_TOOLS`：投稿表單的 AI 工具下拉選單選項
+把整個 `Lun-Art-Gallery` 資料夾放到任何靜態網站託管（GitHub Pages、Cloudflare
+Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ---
 
-## 第五步：部署前端網站（免費）
+## 四、Google Sheet 分頁結構（`setupOrMigrate()` 會自動建立/補齊）
 
-這是純靜態網站，選一個免費平台放上去即可，三選一：
+### AuthorizedUsers
+`UserID, GoogleSub, Email, StudentName, Nickname, ClassName, Role, Status, ArtworkAutoApprove, QuotaMode, QuotaLimit, ResetHour, SessionVersion, CreatedAt, ApprovedAt`
 
-### 方法 A：GitHub Pages
-1. 把整個 `ai-gallery/` 資料夾內容 push 到一個 GitHub repo。
-2. 到 repo 的 Settings → Pages，Source 選擇你的分支（例如 `main`）與根目錄。
-3. 幾分鐘後就會拿到一個 `https://你的帳號.github.io/repo名稱/` 網址。
+- **老師唯一需要手動編輯的分頁**。新帳號申請後 `Status` 會是 `Pending`，老師改成
+  `Active` 才能使用受保護功能（投稿、故事接龍、AI 作圖、故事本）；改成
+  `Disabled`／`Suspended`／其他非 `Active` 值都會被擋下。
+- `ArtworkAutoApprove`：`TRUE` 表示這個人投稿的公開/僅畫廊作品直接上架，不需要
+  審核。
+- `QuotaLimit` / `ResetHour`：AI 作圖每人每日額度與重置時間（Asia/Taipei 24 小
+  時制），可針對個別學生調整。
+- `SessionVersion`：正常不需要手動改；老師若想強制某人立即登出（例如帳號被盜
+  用），可以把這一列的數字改大（例如 +1），該使用者所有裝置的登入狀態會立刻失
+  效，需要重新登入。
 
-### 方法 B：Netlify
-1. 到 [netlify.com](https://netlify.com) 註冊。
-2. 直接把整個資料夾拖曳到 Netlify 的部署頁面（Drag and drop），或連接 GitHub repo 自動部署。
+### Artworks（在舊欄位上新增）
+舊欄位不變：`ID, Timestamp, StudentName, ClassName, ImageURL, DriveBackupURL, Prompt, Description, AITool, Tags, Likes, Approved`
+新增：`OwnerUserID, Nickname, DriveFileID, Visibility, AllowStory, Source`
 
-### 方法 C：Vercel
-1. 到 [vercel.com](https://vercel.com) 註冊，連接 GitHub repo 即可自動部署（因為是純靜態網站，不需要任何建置設定）。
+- `Visibility`：`public`（公開，可進畫廊/故事接龍/被他人放進故事本）、
+  `gallery_only`（只在畫廊顯示，不可票選/不可被他人取用）、`private`（私人，只
+  有本人登入可見，可放進自己的故事本）。
+- 老師仍可直接在這個分頁把某件作品的 `Approved` 改成 `TRUE/FALSE` 來控制是否上
+  架，或直接編輯 `Visibility`／`AllowStory`。
+- 舊資料（沒有 `OwnerUserID` 的列）會被視為 `public`，維持原本畫廊照常顯示的行
+  為。
 
----
+### 其他分頁
+- `Comments`：留言（不需登入即可留言，維持原行為）
+- `StoryChain`：**舊版**故事接龍資料，保留備存，新版不再寫入
+- `StoryRounds` / `StoryVotes` / `HonorBoard`：新版每班獨立故事接龍投票狀態
+- `StoryBooks`：故事本（`FramesJSON` 只存 `[{artworkId, caption, order}]`，圖片/
+  作者/班級一律即時查 `Artworks` 取得，不重複存）
+- `AIUsage`：AI 作圖每人每日用量
+- `Settings`：全域可調參數（`Key`/`Value`），見下表，老師可直接改值：
 
-## 即時更新（Live Update）是怎麼做到的？
-
-**不需要換平台**，GitHub Pages / Netlify / Vercel 三個原本推薦的免費靜態平台都能直接支援這個功能。因為這裡用的不是「動態網站」等級的技術（伺服器渲染、WebSocket），而是**前端定期輪詢（polling）**：
-
-- **畫廊頁**：每 15 秒重新向 Apps Script 要一次最新作品清單，跟畫面上現有的資料比對：
-  - 有新投稿 → 淡入插入一張新卡片（若符合目前的篩選條件）
-  - 有作品被下架 → 該卡片會從畫面移除
-  - 有讚數變化 → 只更新數字，不會整個重新渲染，也不會打斷你正在滑的畫面
-- **首頁精選區**：每 20 秒同步一次讚數，但**不會**重新抽選精選作品，避免瀏覽中版面跳動。
-- **作品詳細 Modal**：開著的時候每 8 秒檢查一次留言是否有更新，並且如果有其他人剛好按讚，也會同步更新 modal 裡顯示的讚數。
-- 切到別的瀏覽器分頁時（`document.hidden`），輪詢會自動暫停；切回來的瞬間會立刻補抓一次最新資料，不會浪費 Apps Script 的每日執行配額。
-
-如果你想要更「真即時」（例如按讚的瞬間所有人畫面立刻跳動，而不是等最多 15 秒），可以之後再加一層真正的推播服務（例如免費方案的 Firebase Realtime Database 或 Pusher），但那樣會多一個要維護的免費帳號，對班級規模的使用情境來說，目前的輪詢方式已經足夠流暢，也維持了「只需要 Google Sheet + Apps Script」的最簡單架構。
-
-
-
-- **首頁 / 畫廊頁**：呼叫 `GET {APPS_SCRIPT_URL}` 取得所有 `Approved=TRUE` 的作品 JSON。
-- **作品詳細 Modal**：呼叫 `GET {APPS_SCRIPT_URL}?action=comments&artworkId=xxx` 取得該作品的留言。
-- **投稿頁 — 班級/姓名下拉選單**：呼叫 `GET {APPS_SCRIPT_URL}?action=roster`，回傳 `AuthorizedUsers` 分頁中 `Status=Active` 的 `{className, studentName}` 清單。投稿頁會用這份清單動態組出「先選班級、再選姓名」的連動下拉選單，所以**老師要新增/刪除班級或學生，只要直接編輯 Google Sheet 的 `AuthorizedUsers` 分頁即可**，不需要改任何程式碼或重新部署網站。若這個 API 連不上，投稿頁會自動退回成「固定班級清單（`js/config.js` 的 `CLASSES`）+ 手動輸入姓名」的備援模式。
-- **故事接龍（story.html）**：呼叫 `GET {APPS_SCRIPT_URL}?action=story` 取得目前故事鏈（`StoryChain` 分頁）與這一輪投票候選；呼叫 `POST` `{ action: "storyVote", voterId, artworkId }` 投票，`artworkId` 傳空字串代表「收回這一票」。
-  - 每一輪從「還沒被選進故事」的已上架作品中隨機抽 `CONFIG.STORY_CANDIDATES_PER_ROUND`（預設 4）張讓大家投票。
-  - **結算新一輪完全由後台控制，不是訪客打開頁面觸發的**：
-    1. 老師隨時可以在 Apps Script 編輯器的函式下拉選單選 **`advanceStoryRound`**、按執行，立刻結算目前這一輪、開下一輪。
-    2. 如果都沒有手動觸發，系統會在每天固定時間（`CONFIG.STORY_DAILY_ROLLOVER_HOUR`，預設 12，也就是中午 12:00 GMT+8）自動執行同一件事——但這個「自動」需要老師先執行一次 **`installDailyStoryTrigger`** 幫忙安裝時間驅動觸發條件（只需要做一次）。
-    3. 執行 `installDailyStoryTrigger` 之前，請先確認這個 Apps Script 專案的時區是「(GMT+08:00) 台北時間」：編輯器左側齒輪圖示「專案設定」→「時區」，不然中午 12 點會對不準。
-  - 投票身分用瀏覽器 `localStorage` 產生的隨機 ID 辨識（同一輪可以換票、也可以收回投票，但沒有帳號登入機制，適合班級內信任情境使用，不建議用於正式比賽計票）。
-  - 已上架作品全部接完故事鏈後，頁面會顯示「暫時沒有新作品可以接龍」，等有新投稿通過審核就會自動繼續（下次有人手動或自動觸發 `advanceStoryRound` 時會偵測到）。
-  - **我的故事本**：故事接龍頁面下方還有一個完全獨立的個人拖曳小工具——把畫廊裡任何作品拖曳（或點圖片上的「＋」）排進最多 3 個「故事版」，可以幫每一格加一句話。這個功能**純前端、資料存在瀏覽器的 localStorage，不會送到 Google Sheet，也不會被其他人看到**，換裝置或清瀏覽器資料就會不見。
-- **投稿頁**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "submit", studentName, className, imageUrl, aiTool, prompt, description, tags }`。
-  - 後端會先比對 `AuthorizedUsers` 分頁確認 `Status=Active`。
-  - 用 `UrlFetchApp` 抓取 Imgur 圖片，備份一份到 Google Drive，寫入 `DriveBackupURL`。
-  - 依 `AutoApprove` 決定新資料的 `Approved` 是 `TRUE` 還是 `FALSE`。
-- **按讚**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "like", artworkId }`，該筆資料的 `Likes` +1。前端用 `localStorage` 記錄已按讚的作品 ID，避免同一裝置重複按讚。
-- **留言**：呼叫 `POST {APPS_SCRIPT_URL}`，body 為 `{ action: "comment", artworkId, commenterName, comment }`，寫入 `Comments` 分頁。
-- **圖片備援**：前端 `<img>` 的 `onerror` 事件會自動切換成 `DriveBackupURL`，Imgur 掛掉也不會斷圖。
-
-> ⚠️ 這個版本的 `Code.gs` 新增了 `action=roster` 與故事接龍（`action=story` / `action=storyVote`）。如果你的 Google Sheet 綁定的 Apps Script 是舊版程式碼，記得要把新的 `apps-script/Code.gs` 整份貼上覆蓋，然後「部署 → 管理部署作業 → 編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」。這樣網址（`/exec`）不會改變，`js/config.js` 也不用再改一次。
->
-> 另外故事接龍需要一個新的 `StoryChain` 分頁（欄位：Order / ArtworkID / StudentName / ClassName / ImageURL / AITool / WinningVotes / Timestamp）。在 Apps Script 編輯器選單列的函式下拉選單選 `setupSheets_`，按執行一次，就會自動幫你補上這個分頁（已存在的分頁不會被覆蓋，可以放心執行）。
+  | Key | 預設值 | 說明 |
+  |---|---|---|
+  | `STORY_CANDIDATES_PER_ROUND` | 4 | 每輪候選作品數 |
+  | `STORY_DAILY_ROLLOVER_HOUR` | 12 | 每日自動結算時間（Asia/Taipei） |
+  | `STORY_BOOK_MAX_PAGES` | 30 | 故事本每本最多頁數 |
+  | `STORY_BOOK_CHARS_PER_PAGE` | 200 | 每頁文字上限 |
+  | `STORY_BOOK_MAX_ACTIVE` | 3 | 每人同時可建立的故事本數 |
+  | `AI_DEFAULT_QUOTA_LIMIT` | 5 | 新帳號預設每日 AI 作圖額度 |
+  | `AI_DEFAULT_RESET_HOUR` | 0 | 新帳號預設額度重置時間 |
+  | `AI_MODEL` | gpt-image-1 | OpenAI 圖片模型 |
+  | `AI_SIZE` | 1024x1024 | 圖片尺寸 |
+  | `AI_QUALITY` | standard | 圖片品質 |
 
 ---
 
-## 投稿失敗（HTTP 404）怎麼排查？
+## 五、老師的日常操作
 
-如果送出投稿後看到「投稿失敗：網路連線失敗 (HTTP 404)」，幾乎都是 `js/config.js` 裡的 `APPS_SCRIPT_URL` 設定錯誤，跟程式碼本身無關。請照這個順序檢查：
-
-1. **打開 `js/config.js`，確認網址的格式**：正確的網址一定是這種格式，結尾是 `/exec`：
-   ```
-   https://script.google.com/macros/s/AKfycbxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec
-   ```
-   最常見的錯誤是複製到 Apps Script **編輯器**的網址（網址裡會有 `/home/projects/` 或 `/edit`），那個是給你自己編輯程式碼用的頁面，不是給網站呼叫的 API 網址，用那個一定會 404。
-
-2. **確認部署方式是「新增部署作業」而不是「測試部署作業」**：Apps Script 編輯器右上角「部署」按鈕旁如果有下拉選單，要選「**新增部署作業**」，類型選「**網頁應用程式**」，才會拿到正式、永久有效的 `/exec` 網址。「測試部署作業」給的網址只有你自己登入時能用，其他人（包括你的網站）呼叫會失敗。
-
-3. **如果你確定網址正確，但最近又修改過 `Code.gs`**：修改程式碼後一定要「部署 → 管理部署作業 → 點編輯（鉛筆圖示）→ 版本選『新版本』→ 部署」，單純儲存檔案不會更新已經發布的網址內容。
-
-4. **打開瀏覽器開發者工具確認實際請求的網址**：在投稿頁按 F12 開啟開發者工具，切到 **Network（網路）** 分頁，重新送出一次投稿，找到那個失敗的請求，點進去看「Request URL」，跟 `js/config.js` 裡設定的網址逐字比對，看有沒有多打或少打字元。
-
-5. **確認 Google Sheet 的三個分頁名稱完全正確**：`Artworks`、`AuthorizedUsers`、`Comments`，大小寫、有沒有多空格都要一致，否則會出現「找不到分頁」的錯誤（但這種通常會顯示別的錯誤訊息，不是 404）。
-
-## 老師的日常操作
-
-- **審核投稿**：打開 `Artworks` 分頁，找到 `Approved` 是 `FALSE` 的列，確認內容合適後手動改成 `TRUE`，該作品就會出現在畫廊（可能需要等前端下次重新讀取，通常是使用者重新整理頁面時）。
-- **管理投稿權限**：在 `AuthorizedUsers` 分頁新增/刪除/修改列即可，即時生效（下一次投稿時會重新檢查）。
-- **下架某作品**：把 `Artworks` 分頁對應列的 `Approved` 改成 `FALSE`，或直接刪除整列。
+- **審核新帳號**：`AuthorizedUsers` 分頁把 `Status` 從 `Pending` 改成 `Active`。
+- **審核投稿**：若該學生 `ArtworkAutoApprove` 不是 `TRUE`，投稿會在 `Artworks`
+  分頁以 `Approved=FALSE` 出現，改成 `TRUE` 即上架（僅適用於 `public`／
+  `gallery_only`，私人作品不需要審核也不會公開）。
+- **調整每人 AI 額度**：`AuthorizedUsers` 分頁改該列的 `QuotaLimit` / `ResetHour`。
+- **手動結算故事接龍**：Apps Script 編輯器函式選單選：
+  - `advanceStoryRoundForClass`：先在程式碼上方暫時改成
+    `advanceStoryRoundForClass("七年一班")` 這樣直接執行，或用「執行 → 帶參數執
+    行」功能。
+  - `advanceAllStoryRounds`：一次結算所有班級目前進行中的輪次。
+- **安裝每日自動結算**：執行一次 `installDailyStoryTrigger`（可重複執行，會先移
+  除舊的同名 trigger 再重新安裝，不會裝兩份）。之後每天 `STORY_DAILY_ROLLOVER_HOUR`
+  點（預設中午 12:00，Asia/Taipei）會自動結算所有班級並開下一輪。
+- **重置故事接龍**：`resetStoryForClass("七年一班")` 只清除該班的
+  `StoryRounds`/`HonorBoard`（`StoryVotes` 目前設計為全域共用，重置時會一併清
+  空）；`resetAllStory()` 重置全部班級。舊版 `StoryChain` 資料不受影響、也不會
+  被刪除。
 
 ---
 
-## 已知限制與提醒
+## 六、從舊版升級的最短步驟
 
-- **Apps Script 每日配額**：免費 Google 帳號的 Apps Script 有每日執行時間與 `UrlFetchApp` 呼叫次數上限（一般教學/班級規模用量通常足夠）。若配額用盡，前端會顯示清楚的錯誤訊息與「重新載入」按鈕，而不是空白頁面。
-- **Imgur 連結格式**：投稿表單請提醒學生貼「圖片直接連結」（例如 `https://i.imgur.com/xxxxx.jpg`），而不是 Imgur 的相簿頁面網址，否則備份圖片會抓取失敗。
-- **CORS 說明**：前端 `POST` 請求使用 `Content-Type: text/plain;charset=utf-8` 而非 `application/json`，這是刻意的作法，用來避免瀏覽器對 Apps Script 發出 CORS 預檢請求（preflight）失敗的問題。`Code.gs` 內的 `doPost` 會自行用 `JSON.parse(e.postData.contents)` 解析。
-- **未設定網址時的提示**：如果忘記在 `js/config.js` 填入正確的 `APPS_SCRIPT_URL`，網站會顯示「尚未設定 Apps Script 網址」的錯誤訊息，方便除錯。
+1. 貼上新版 `apps-script/Code.gs`，填好四個 Script Properties，執行一次
+   `setupOrMigrate()`（不會刪除任何既有資料，只會補齊新欄位/新分頁）。
+2. 重新部署 Web App（管理部署作業 → 新版本）。
+3. 換上新版前端所有檔案，`js/config.js` 補上 `GOOGLE_CLIENT_ID`。
+4. 完成 Google Cloud OAuth 用戶端設定（見「二」）。
+5. 通知全班：需要用 Google 帳號登入並填寫申請表（真實姓名／班級／暱稱），老師
+   再到 `AuthorizedUsers` 把 `Status` 改成 `Active`（舊資料中的姓名/班級可以先參
+   考，但新帳號的授權判斷完全以這個新流程為準）。
+6. 舊投稿（沒有 `OwnerUserID`）維持 `public`、可正常在畫廊顯示，但因為找不到擁
+   有者，無法被學生自己編輯隱私設定——這是預期行為，教師可直接在 Sheet 上手動調
+   整這些舊資料的 `Visibility`。
 
 ---
 
-## 客製化風格
+## 七、測試清單
 
-網站的黑板／軟木塞視覺變數都集中在 `css/style.css` 檔案最上方的 `:root` CSS 變數區塊，包含顏色、字型等，可依需求直接調整，例如：
+- [ ] 新帳號登入後狀態為 `Pending`，看到「等待審核」提示，無法投稿/故事接龍/AI
+      作圖/建故事本
+- [ ] 老師改成 `Active` 後，重新整理頁面即可使用上述功能
+- [ ] `Disabled`／`Suspended` 帳號被擋下，且提示訊息不同於 `Pending`
+- [ ] 同班暱稱重複時，申請/修改暱稱會被拒絕（含全形/半形空白正規化後仍視為重
+      複）
+- [ ] 上傳圖片設為 `public`／`gallery_only`／`private` 三種都能正確運作：
+      - `public`／`gallery_only`：畫廊看得到圖片
+      - `private`：畫廊看不到，本人登入後在「我的投稿」看得到圖，且圖片網址帶
+        有 `token` 參數（換成別人的 sessionToken 或拿掉 token 應該看不到圖）
+- [ ] 網址匯入模式無法選擇「私人」
+- [ ] 故事接龍只顯示登入者自己班級的候選作品，看不到其他班的投票
+- [ ] 不能投給自己的作品（按鈕會顯示提示文字而非投票按鈕）
+- [ ] 同一人可以在結算前改票，改票後只留一筆紀錄（檢查 `StoryVotes` 分頁該
+      `RoundID+UserID` 只有一列）
+- [ ] 手動執行 `advanceStoryRoundForClass` 後，`HonorBoard` 出現前三名、開新一
+      輪候選
+- [ ] 安裝 `installDailyStoryTrigger` 後，隔天中午（或你設定的時間）自動結算（
+      可先改 `STORY_DAILY_ROLLOVER_HOUR` 成快到的時間測試）
+- [ ] 故事本在瀏覽器 A 建立/編輯後，用另一台裝置（或無痕視窗）登入同一帳號，能
+      看到相同內容
+- [ ] AI 作圖：額度用到第 4 次（5 次上限時）出現 70% 提醒；用滿 5 次後按鈕停用
+      且後端拒絕
+- [ ] 開兩個分頁同時快速點兩次「產生圖片」（模擬雙擊/多分頁），最多只成功扣一
+      次額度、不會超額生成
+- [ ] 刻意讓 OpenAI 呼叫失敗（例如暫時填錯 `OPENAI_API_KEY`），確認失敗後額度
+      有退還（`AIUsage` 分頁 `UsedCount` 沒有增加）
 
-```css
-:root {
-  --blackboard: #1b3328;   /* 黑板底色 */
-  --cork: #c9a06a;         /* 軟木塞底色 */
-  --chalk-yellow: #f4e285; /* 粉筆黃（強調色） */
-  ...
-}
-```
+---
 
-字型使用 Google Fonts：`Ma Shan Zheng`（中文粉筆標題）、`Zhi Mang Xing`（中文手寫便條字）、`Kalam`（英文粉筆字）、`Noto Sans TC`（中文正文）。
+## 八、注意事項
+
+- 這是課堂教學工具，不是正式商用系統：Session 採用簽章 token（HMAC-SHA256 +
+  Script Property 密鑰）而非第三方身份提供者的完整 session 管理；Google ID
+  Token 的簽章驗證透過 Google 官方 `tokeninfo` 端點完成（Apps Script 沒有內建
+  RSA 驗簽能力），已檢查 `aud`／`iss`／`exp`／`email_verified`。
+- 私人圖片一律不設定 `ANYONE_WITH_LINK`，讀取一律經過 Apps Script 驗證
+  `session token` 與 `OwnerUserID` 後才會把 Google Drive 檔案內容代理回傳，不會
+  只靠隱藏網址防護。
+- 老師仍可直接在 Google Sheet／Google Drive 管理所有資料，本專案刻意不做管理後
+  台頁面。

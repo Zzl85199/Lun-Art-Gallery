@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>故事接龍 - AI 創作畫廊</title>
-<meta name="description" content="全班投票決定下一張接進故事的作品，一起用大家的 AI 創作接出一個獨一無二的故事。">
+<meta name="description" content="全班登入投票決定下一張接進故事的作品，並打造屬於自己的雲端故事本。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Fredoka:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -19,7 +19,8 @@
       <a class="nav-tab" data-page="home" href="index.html">首頁</a>
       <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
       <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
-      <a class="nav-tab" data-page="story" href="story.html">故事接龍</a>
+      <a class="nav-tab active" data-page="story" href="story.html">故事接龍</a>
+      <a class="nav-tab" data-page="ai" href="ai.html">AI 作圖</a>
       <a class="nav-tab" data-page="about" href="about.html">關於</a>
     </nav>
   </div>
@@ -29,72 +30,15 @@
   <span class="hero-decor d1" style="font-size:1.8rem;">🎲</span>
   <span class="hero-decor d2" style="font-size:1.6rem;">📖</span>
   <div class="container">
-    <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);">故事接龍投票</h1>
-    <p class="hero-desc" style="margin-bottom:0;">大家一起投票，決定下一張接進故事的作品。時間到自動結算，得票最高的作品就會接上故事鏈！</p>
+    <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);">故事接龍</h1>
+    <p class="hero-desc" style="margin-bottom:0;">需要登入才能使用。每一班各自獨立票選、獨立榮譽榜；最下方是你自己的雲端故事本，可跨裝置繼續編輯。</p>
   </div>
 </section>
 <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
 </svg>
 
-<section class="board-section cork-bg">
-  <div class="container">
-
-    <div id="story-loading" class="story-msg">故事載入中...</div>
-    <div id="story-empty" class="story-msg" style="display:none;">還沒有作品可以開始接龍，快去<a href="submit.html">投稿</a>第一張作品，讓故事開始吧！</div>
-    <div id="story-error" class="story-msg story-msg-error" style="display:none;"></div>
-
-    <div id="story-content" style="display:none;">
-      <h2 class="board-heading" style="font-size:1.6rem;">📖 目前的故事</h2>
-      <div class="story-chain" id="story-chain"></div>
-    </div>
-
-  </div>
-</section>
-
-<svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(180deg);">
-  <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
-</svg>
-
-<section class="board-section my-story-section">
-  <div class="container">
-    <h2 class="board-heading my-story-heading" style="font-size:1.7rem;">🎨 我的故事本</h2>
-    <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">
-      把畫廊裡的作品拖進下面的故事版，排出你自己的故事！只存在<b>這台瀏覽器裡</b>，別人看不到，換裝置或清瀏覽器資料就會消失。
-    </p>
-
-    <h3 style="margin:26px 0 10px;font-family:var(--font-hand);font-size:1.1rem;">🖼️ 素材庫（拖曳或點擊 ＋ 加入下面的故事版）</h3>
-    <div class="my-story-pool" id="my-story-pool">
-      <p style="color:#8a7d68;">載入中...</p>
-    </div>
-
-    <div id="my-story-boards"></div>
-
-    <div style="text-align:center;margin-top:20px;">
-      <button id="add-story-board-btn" class="btn btn-outline-dark" type="button">➕ 新增一個故事版（最多 3 個）</button>
-    </div>
-  </div>
-</section>
-
-<!-- 投票區塊：整組（含上方波浪）由 story.js 依載入狀態一起顯示 / 隱藏 -->
-<div id="story-vote-wrap" style="display:none;">
-  <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
-  </svg>
-  <section class="board-section cork-bg">
-    <div class="container">
-      <div id="round-section">
-        <h2 class="board-heading" style="font-size:1.6rem;">🗳️ 這一輪投票中</h2>
-        <p style="text-align:center;color:#5b4f3f;" id="round-countdown"></p>
-        <div class="story-round-grid" id="story-round-grid"></div>
-      </div>
-
-      <div id="round-finished" class="story-msg" style="display:none;">
-        目前所有已上架的作品都已經接進故事鏈了！快去<a href="submit.html">投稿新作品</a>，讓故事可以繼續下去吧 🎉
-      </div>
-    </div>
-  </section>
-</div>
+<div class="container" id="story-gate" style="padding:20px 0 60px;"></div>
 
 <footer class="site-footer">
   <div class="container">
@@ -105,6 +49,8 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/main.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/story.js"></script>
 </body>
 </html>
