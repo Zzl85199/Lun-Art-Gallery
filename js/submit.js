@@ -12,35 +12,7 @@ const VISIBILITY_OPTIONS = [
   { value: "private", label: "🔒 私人", hint: "只有你自己登入後看得到，可以放進自己的故事本" },
 ];
 
-/** 把使用者選的圖片壓縮到合理大小再轉成 base64，減少上傳流量與 Google Drive 空間占用 */
-function compressImageFile(file, maxDim, quality) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("圖片讀取失敗"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("圖片格式無法辨識"));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        const mimeType = file.type === "image/gif" ? "image/png" : "image/jpeg";
-        const dataUrl = canvas.toDataURL(mimeType, quality);
-        resolve({ base64: dataUrl.split(",")[1], mimeType });
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
+/** 把使用者選的圖片壓縮到合理大小再轉成 base64（共用版本在 js/main.js 的 compressImageFile） */
 
 function initSubmitPage(root, user) {
   root.innerHTML = `

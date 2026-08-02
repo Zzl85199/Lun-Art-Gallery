@@ -26,6 +26,36 @@ function renderFooterYear() {
   if (el) el.textContent = new Date().getFullYear();
 }
 
+/** 把使用者選的圖片壓縮到合理大小再轉成 base64（投稿頁上傳、AI 作圖參考圖上傳共用） */
+function compressImageFile(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("圖片讀取失敗"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("圖片格式無法辨識"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const mimeType = file.type === "image/gif" ? "image/png" : "image/jpeg";
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        resolve({ base64: dataUrl.split(",")[1], mimeType });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function visibilityLabel(vis) {
   if (vis === "private") return "🔒 私人";
   if (vis === "gallery_only") return "🖼️ 僅畫廊";

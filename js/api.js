@@ -116,5 +116,14 @@ const Api = {
 
   /* ---------------- AI 作圖 ---------------- */
   aiQuota() { return this._post({ action: "ai/quota" }); },
-  aiGenerate(prompt, referenceArtworkId) { return this._post({ action: "ai/generate", prompt, referenceArtworkId: referenceArtworkId || "" }); },
+  aiGenerate(prompt, options) {
+    const opts = options || {};
+    return this._post({
+      action: "ai/generate",
+      prompt,
+      referenceArtworkId: opts.referenceArtworkId || "",
+      referenceImageBase64: opts.referenceImageBase64 || "",
+      referenceImageMimeType: opts.referenceImageMimeType || "",
+    });
+  },
 };

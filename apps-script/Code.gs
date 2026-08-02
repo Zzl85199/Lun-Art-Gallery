@@ -1390,6 +1390,8 @@ function handleAiGenerate_(body) {
   if (prompt.length > 2000) throw new Error("Prompt 太長了，請精簡在 2000 字以內");
 
   const referenceArtworkId = String(body.referenceArtworkId || "").trim();
+  const referenceImageBase64 = String(body.referenceImageBase64 || "").trim();
+  const referenceImageMimeType = String(body.referenceImageMimeType || "").trim();
 
   const reservation = reserveAiQuota_(user);
   if (!reservation.ok) throw new Error("你今天的 AI 作圖額度已經用完了，請明天再來，或請老師調整額度");
@@ -1401,10 +1403,25 @@ function handleAiGenerate_(body) {
     const size = settings.AI_SIZE || DEFAULT_SETTINGS.AI_SIZE;
     const quality = settings.AI_QUALITY || DEFAULT_SETTINGS.AI_QUALITY;
 
+    // 參考圖優先順序：這次現場上傳的圖 > 選中的舊作品 > 都沒有就走純文字生成
+    let refBlob = null;
+    if (referenceImageBase64) {
+      if (referenceImageMimeType.indexOf("image/") !== 0) throw new Error("參考圖檔案類型不是圖片");
+      let bytes;
+      try {
+        bytes = Utilities.base64Decode(referenceImageBase64);
+      } catch (e) {
+        throw new Error("參考圖資料格式錯誤");
+      }
+      if (bytes.length > 9 * 1024 * 1024) throw new Error("參考圖檔案太大，請壓縮到 9MB 以內");
+      refBlob = Utilities.newBlob(bytes, referenceImageMimeType, "reference." + guessExtension_(referenceImageMimeType));
+    } else if (referenceArtworkId) {
+      refBlob = getReferenceImageBlob_(referenceArtworkId, user);
+    }
+
     let resp;
-    if (referenceArtworkId) {
-      // 有選參考圖：走 /images/edits，帶 input_fidelity=high 盡量保留角色的臉部/風格特徵
-      const refBlob = getReferenceImageBlob_(referenceArtworkId, user);
+    if (refBlob) {
+      // 有參考圖：走 /images/edits，帶 input_fidelity=high 盡量保留角色的臉部/風格特徵
       resp = UrlFetchApp.fetch("https://api.openai.com/v1/images/edits", {
         method: "post",
         headers: { Authorization: "Bearer " + apiKey },
