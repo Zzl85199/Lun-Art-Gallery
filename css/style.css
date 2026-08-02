@@ -1701,7 +1701,16 @@ button {
 .info-tooltip:focus .tooltip-text { visibility: visible; opacity: 1; }
 
 /* 常用標籤快選 chip */
-.tag-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag-chip-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-top: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.tag-chip-row .tag-chip { flex: 0 0 auto; }
 .tag-chip {
   border: 1.5px solid var(--kraft);
   background: #fff;

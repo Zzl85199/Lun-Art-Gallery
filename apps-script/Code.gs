@@ -1383,6 +1383,17 @@ function getReferenceImageBlob_(artworkId, user) {
   throw new Error("這張作品沒有可用的圖片資料");
 }
 
+/** gpt-image-1 系列只接受 low/medium/high/auto；如果 Settings 分頁裡還留著舊版
+ *  （dall-e-3 時代）的 standard/hd，或任何看不懂的值，自動修正成安全的預設值，
+ *  避免因為 Sheet 裡一個過期的字串就讓每次生成都失敗。 */
+function normalizeAiQuality_(v) {
+  const s = String(v || "").trim().toLowerCase();
+  if (["low", "medium", "high", "auto"].includes(s)) return s;
+  if (s === "standard") return "medium";
+  if (s === "hd") return "high";
+  return "medium";
+}
+
 function handleAiGenerate_(body) {
   const user = requireActiveUser_(body);
   const prompt = String(body.prompt || "").trim();
@@ -1401,7 +1412,7 @@ function handleAiGenerate_(body) {
     const settings = getSettings_();
     const model = settings.AI_MODEL || DEFAULT_SETTINGS.AI_MODEL;
     const size = settings.AI_SIZE || DEFAULT_SETTINGS.AI_SIZE;
-    const quality = settings.AI_QUALITY || DEFAULT_SETTINGS.AI_QUALITY;
+    const quality = normalizeAiQuality_(settings.AI_QUALITY || DEFAULT_SETTINGS.AI_QUALITY);
 
     // 參考圖優先順序：這次現場上傳的圖 > 選中的舊作品 > 都沒有就走純文字生成
     let refBlob = null;
