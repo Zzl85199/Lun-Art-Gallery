@@ -105,7 +105,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ### Artworks（在舊欄位上新增）
 舊欄位不變：`ID, Timestamp, StudentName, ClassName, ImageURL, DriveBackupURL, Prompt, Description, AITool, Tags, Likes, Approved`
-新增：`OwnerUserID, Nickname, DriveFileID, Visibility, AllowStory, Source`
+新增：`OwnerUserID, Nickname, DriveFileID, Visibility, AllowStory, Source, NeedsManualPublish, VisibilityUpdatedAt`
 
 - `Visibility`：`public`（公開，可進畫廊/故事接龍/被他人放進故事本）、
   `gallery_only`（只在畫廊顯示，不可票選/不可被他人取用）、`private`（私人，只
@@ -114,6 +114,15 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   架，或直接編輯 `Visibility`／`AllowStory`。
 - 舊資料（沒有 `OwnerUserID` 的列）會被視為 `public`，維持原本畫廊照常顯示的行
   為。
+- `NeedsManualPublish`：`TRUE` 代表這件作品投稿或切換公開範圍時，Drive 分享設定
+  失敗過，系統已經自動標記成審核中（`Approved=FALSE`），等老師確認。老師可以直
+  接在這個分頁**用篩選器只顯示 `NeedsManualPublish=TRUE` 的列**一次看到所有需要
+  處理的作品，確認 `Visibility` 是學生想要的值後，把 `Approved` 改成 `TRUE` 即
+  可（不需要對 Drive 做任何額外設定，圖片本來就顯示得出來）。也可以執行
+  `approveAllNeedsManualPublish()` 一次核准所有這類作品，不用一列一列改。
+- `VisibilityUpdatedAt`：這件作品的 `Visibility` 最後一次被投稿或被學生自己修改
+  的時間，方便老師搭配 `StudentName` 欄篩選，快速找到「某個學生最近改了哪張圖的
+  公開範圍、什麼時候改的」。
 
 ### 其他分頁
 - `Comments`：留言（不需登入即可留言，維持原行為）
@@ -152,10 +161,14 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   投稿相關的讀取有 15 秒的暫存（cache），手動改完 Sheet 後最多等 15 秒生效。
 - **學生跳出「請老師協助」的提示視窗**：這代表學生投稿或切換公開範圍時，系統嘗試
   設定 Google Drive 分享權限失敗了（環境限制造成，詳見下方疑難排解），系統會自動
-  把這件作品標記為 `Approved=FALSE`（審核中），並用後端代理讓圖片還是能正常顯示。
-  老師只需要到 `Artworks` 分頁，找到那一列，確認 `Visibility` 欄位是學生想要的值
-  （`public`／`gallery_only`），把 `Approved` 改成 `TRUE` 即可——不需要額外去 Drive
-  做任何設定，圖片本來就能正常顯示。
+  把這件作品標記為 `Approved=FALSE`、`NeedsManualPublish=TRUE`（審核中），並用
+  後端代理讓圖片還是能正常顯示。老師可以：
+  - 到 `Artworks` 分頁**篩選 `NeedsManualPublish=TRUE`**，一次看到所有卡住的作品，
+    確認 `Visibility` 沒問題後把 `Approved` 改成 `TRUE`；或
+  - 直接在 Apps Script 編輯器執行一次 **`approveAllNeedsManualPublish()`**，一鍵
+    核准所有這類作品，不用一列一列改。
+  - 不需要額外去 Drive 做任何分享設定，圖片本來就顯示得出來（見下方「圖片顯示機
+    制」說明）。
 - **調整每人 AI 額度**：`AuthorizedUsers` 分頁改該列的 `QuotaLimit` / `ResetHour`。
 - **手動結算故事接龍**：Apps Script 編輯器函式選單選：
   - `advanceStoryRoundForClass`：先在程式碼上方暫時改成
@@ -262,6 +275,21 @@ Google Drive 空間。這是選用（預設不會自動執行）的清理機制�
 
 如果加了 Drive API 服務、也部署了新版本，還是看到一樣的錯誤，請截圖「服務」清單給我
 確認版本是不是選成 v2（部分語法在 v2/v3 之間不通用）。
+
+### 圖片顯示機制：為什麼不直接用 Google Drive 給的公開網址？
+
+Google Drive 的 `https://drive.google.com/uc?export=view&id=...` 這種公開連結，直接當
+`<img src>` 嵌入外部網站經常不穩定（有時會被導向病毒掃描確認頁、或被部分瀏覽器的防護機制
+擋掉），跟「Drive 分享設定本身有沒有成功」是兩回事。所以即使分享設定成功、拿到這個網址，
+本專案的**上傳/AI 產圖一律不直接用這個網址顯示，一律透過後端代理讀取內容**（前端拿到
+base64 圖片資料後組成 `data:` 網址顯示）。網址匯入模式（例如貼 imgur/meee 連結）因為本來
+就是外部圖床的正常連結，不受影響，維持直接顯示。
+
+**這個設計的取捨**：好處是圖片顯示不再依賴 Google Drive 公開連結的不穩定行為，只要
+`Drive.Files.get()` 讀得到內容就能顯示；代價是每一張 Drive 圖片現在都要多一次呼叫
+Apps Script 後端（不再是瀏覽器直接跟 Google 的圖片伺服器要資料），對 Apps Script 的執行
+配額會有比較高的負擔。以一個班級的規模（幾十人、平常使用量）通常沒有問題；如果之後真的
+遇到載入變慢或配額吃緊，可以再討論要不要針對「已確認能穩定顯示」的圖片改回直接網址。
 
 ## 十、測試清單
 

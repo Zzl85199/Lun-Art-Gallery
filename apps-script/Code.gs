@@ -55,6 +55,7 @@ const ARTWORK_HEADERS = [
   "Prompt", "Description", "AITool", "Tags", "Likes", "Approved",
   // 新欄位
   "OwnerUserID", "Nickname", "DriveFileID", "Visibility", "AllowStory", "Source",
+  "NeedsManualPublish", "VisibilityUpdatedAt",
 ];
 
 const USER_HEADERS = [
@@ -532,18 +533,21 @@ function isArtworkViewableBy_(art, user) {
 
 /** 對外公開（畫廊 / 訪客）呈現用的欄位，絕不包含 StudentName / Email / GoogleSub / OwnerUserID / DriveFileID */
 function sanitizeArtworkPublic_(a) {
-  const imageUrl = a.ImageURL || "";
+  const rawImageUrl = a.ImageURL || "";
+  // Google Drive 自己的「uc?export=view」公開連結，直接當 <img src> 用經常不穩定（有時會被
+  // Google 導向病毒掃描確認頁、或被少數瀏覽器的防護機制擋掉），所以即使當初分享設定成功、
+  // 拿得到這個網址，畫面顯示也一律改用後端代理讀取內容，只有「網址匯入」（真正的外部圖床
+  // 連結，例如 imgur/meee）才直接使用這個網址——這樣圖片顯示不再依賴 Drive 公開連結能不能
+  // 正常被瀏覽器嵌入，穩定性大幅提高。
+  const isOwnDriveLink = rawImageUrl.indexOf("https://drive.google.com/uc") === 0;
+  const displayImageUrl = isOwnDriveLink ? "" : rawImageUrl;
   return {
     ID: a.ID,
     Timestamp: a.Timestamp,
     ClassName: a.ClassName,
     DisplayName: a.Nickname || a.StudentName || "匿名",
-    ImageURL: imageUrl,
-    // 沒有直接可用網址、但確實有存在 Drive 的檔案時，一律可以透過後端代理讀取——
-    // 不限「僅私人才代理」：就算是公開/僅畫廊的作品，只要 Drive 分享設定當初設定失敗
-    // （例如環境限制造成的權限問題）沒有產生直接網址，一樣可以靠這個代理正常顯示，
-    // 不會因為 Drive 分享設定失敗就整張圖顯示不出來。
-    needsProxy: !imageUrl && !!a.DriveFileID,
+    ImageURL: displayImageUrl,
+    needsProxy: !displayImageUrl && !!a.DriveFileID,
     DriveBackupURL: a.DriveBackupURL || "",
     Prompt: a.Prompt || "",
     Description: a.Description || "",
@@ -829,6 +833,8 @@ function handleSubmit_(body) {
     Visibility: visibility,
     AllowStory: allowStory,
     Source: "User",
+    NeedsManualPublish: needsManualPublish,
+    VisibilityUpdatedAt: new Date(),
   });
   invalidateCache_(CONFIG.SHEET_ARTWORKS);
 
@@ -857,7 +863,7 @@ function handleUpdateVisibility_(body) {
   const rowNum = findRowByValue_(artworksSheet, "ID", artworkId);
   if (rowNum === -1) throw new Error("找不到這件作品");
 
-  const update = { Visibility: newVisibility, AllowStory: newAllowStory };
+  const update = { Visibility: newVisibility, AllowStory: newAllowStory, VisibilityUpdatedAt: new Date() };
   let needsManualPublish = false;
 
   if (art.DriveFileID) {
@@ -867,6 +873,7 @@ function handleUpdateVisibility_(body) {
     // 標記成需要老師協助確認，並強制不自動上架，而不是靜靜地假裝一切都成功了。
     needsManualPublish = newVisibility !== "private" && !shared.ok;
   }
+  update.NeedsManualPublish = needsManualPublish;
 
   // 只有「私人 → 非私人」才需要重新走一次審核流程；在 public/gallery_only 之間互換不影響審核狀態
   if (oldVisibility === "private" && newVisibility !== "private") {
@@ -1199,6 +1206,30 @@ function installDailyStoryTrigger() {
  * 這個函式預設不會自動執行；要啟用請執行一次 installStaleImageCleanupTrigger()。
  * 也可以隨時手動執行 cleanupStalePrivateAiArtworks() 立即清一次。
  */
+/**
+ * 🔧 老師專用：一鍵核准所有「因為 Drive 分享設定失敗而被標記為審核中」的作品
+ * （`NeedsManualPublish=TRUE` 的那些列）。因為畫面顯示本來就是靠後端代理讀取（不依賴
+ * Drive 分享設定成不成功），這些作品的圖片其實都已經能正常顯示，只是卡在「等老師按下
+ * 核准」這一步——這個函式就是幫你一次按完全部。
+ *
+ * 執行後會把符合條件的列一次改成 Approved=TRUE、NeedsManualPublish=FALSE（清掉標記，
+ * 代表已經處理過）。可以安全重複執行，沒有符合條件的列就不會動。
+ */
+function approveAllNeedsManualPublish() {
+  const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
+  const rows = rowsWithLineNumbers_(sheet);
+  let count = 0;
+  rows.forEach(({ rowNum, obj }) => {
+    if (parseBoolean_(obj.NeedsManualPublish) && !parseBoolean_(obj.Approved)) {
+      updateObjectRow_(sheet, rowNum, { Approved: true, NeedsManualPublish: false });
+      count++;
+    }
+  });
+  invalidateCache_(CONFIG.SHEET_ARTWORKS);
+  Logger.log(`✅ 已核准 ${count} 件原本卡在「審核中」的作品`);
+  return { success: true, count };
+}
+
 function cleanupStalePrivateAiArtworks() {
   const settings = getSettings_();
   const days = settingNum_(settings, "STALE_PRIVATE_AI_DAYS");
