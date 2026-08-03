@@ -324,7 +324,13 @@ function initSubmitPage(root, user) {
       const img = card.querySelector("img");
       const placeholder = card.querySelector(".no-image-placeholder");
       const art = artworks.find((a) => a.ID === id);
-      setupImageWithFallback(img, placeholder, Api.resolveImageSrc(art), art.DriveBackupURL);
+      if (art.needsProxy) {
+        img.style.display = "block";
+        if (placeholder) placeholder.style.display = "none";
+        Api.setImageSrc(img, art);
+      } else {
+        setupImageWithFallback(img, placeholder, Api.resolveImageSrc(art), art.DriveBackupURL);
+      }
 
       const visSelect = card.querySelector(".submission-visibility");
       const allowStoryInput = card.querySelector(".submission-allow-story");

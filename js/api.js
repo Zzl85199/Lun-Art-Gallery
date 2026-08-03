@@ -28,20 +28,42 @@ const Api = {
     } catch (e) { /* localStorage 不可用時就略過（例如無痕模式部分限制），登入狀態當次瀏覽有效即可 */ }
   },
 
-  /** 私人圖片的代理網址：只有擁有者本人（帶著有效 sessionToken）才看得到真正的圖片內容 */
-  privateImageUrl(artworkId) {
-    const url = new URL(CONFIG.APPS_SCRIPT_URL);
-    url.searchParams.set("action", "image");
-    url.searchParams.set("artworkId", artworkId);
-    url.searchParams.set("token", this.getSessionToken());
-    return url.toString();
-  },
+  _privateImageCache: new Map(), // artworkId -> Promise<dataUrl>，避免同一張私人圖片重複請求
 
-  /** 依作品資料算出目前這個瀏覽器能用的圖片網址（公開圖直接用 ImageURL，私人圖走代理） */
+  /** 依作品資料算出「目前這個瀏覽器能立即用的」圖片網址：公開圖直接是 ImageURL；
+   *  私人圖片沒有立即可用的網址（一定要先非同步跟後端要 base64 內容），這裡回傳空字串，
+   *  真正的私人圖片請改用 setImageSrc(imgEl, art) 這個非同步版本。 */
   resolveImageSrc(art) {
     if (art.ImageURL) return art.ImageURL;
-    if (art.needsProxy && art.ID) return this.privateImageUrl(art.ID);
     return "";
+  },
+
+  /** 私人圖片：透過一般的 POST（帶 sessionToken）換回 base64 圖片內容，組成 data: URI。
+   *  Apps Script 的 doGet/doPost 只能回傳 HtmlOutput/TextOutput，無法直接回傳圖片位元組，
+   *  所以私人圖片沒辦法像公開圖片一樣單純給一個網址讓 <img> 讀取，一定要走這個非同步流程。 */
+  async fetchPrivateImageDataUrl(artworkId) {
+    if (this._privateImageCache.has(artworkId)) return this._privateImageCache.get(artworkId);
+    const promise = this._post({ action: "image/get", artworkId })
+      .then((res) => `data:${res.mimeType};base64,${res.base64}`)
+      .catch((err) => { this._privateImageCache.delete(artworkId); throw err; });
+    this._privateImageCache.set(artworkId, promise);
+    return promise;
+  },
+
+  /** 幫一個 <img> 元素設定正確的圖片來源：公開圖片直接設定，私人圖片先非同步抓取內容再設定。
+   *  loading/失敗都會反映在該 <img> 上（class 切換 + alt 文字），呼叫端不需要自己處理狀態。 */
+  async setImageSrc(imgEl, art) {
+    if (art.ImageURL) { imgEl.src = art.ImageURL; return; }
+    if (art.needsProxy && art.ID) {
+      imgEl.classList.add("img-loading");
+      try {
+        imgEl.src = await this.fetchPrivateImageDataUrl(art.ID);
+      } catch (err) {
+        imgEl.alt = "圖片載入失敗";
+      } finally {
+        imgEl.classList.remove("img-loading");
+      }
+    }
   },
 
   async _get(params) {

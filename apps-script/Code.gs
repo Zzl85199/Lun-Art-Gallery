@@ -608,34 +608,41 @@ function handleListMine_(body) {
 }
 
 /* -------------------------------------------------------------------------
-   doGet action=image：私人圖片代理（一定要驗證 session 與 OwnerUserID，不能只靠隱藏網址）
+   POST action=image/get：私人圖片內容（改走 POST + base64，doGet 不能直接回傳 Blob）
    ------------------------------------------------------------------------- */
-function handleImageProxy_(e) {
-  const artworkId = e.parameter.artworkId;
-  const token = e.parameter.token;
-  if (!artworkId) return textOut_("缺少 artworkId");
+/**
+ * 重要更正：Apps Script 的 doGet/doPost 只能回傳 HtmlOutput 或 TextOutput，
+ * 直接 return 一個 Blob 會出現「指令碼已完成，但傳回值的類型不是支援的傳回類型」
+ * 這個錯誤（實測證實，網路上很多教學誤傳可以直接回傳 Blob，並不正確）。
+ * 因此私人圖片一律改成：前端用一般的 POST 呼叫（帶 sessionToken）換回
+ * base64 圖片內容 + mimeType，前端再組成 data: URI 設定給 <img> 的 src。
+ */
+function handleImageGet_(body) {
+  const artworkId = String(body.artworkId || "");
+  if (!artworkId) throw new Error("缺少 artworkId");
 
   const all = getArtworksAll_();
-  const art = all.find((a) => String(a.ID) === String(artworkId));
-  if (!art) return textOut_("找不到這件作品");
+  const art = all.find((a) => String(a.ID) === artworkId);
+  if (!art) throw new Error("找不到這件作品");
+  if (!art.DriveFileID) throw new Error("這件作品沒有可代理的圖片");
 
   const vis = normalizeVisibility_(art.Visibility);
-  if (vis !== "private") {
-    if (art.DriveFileID) {
-      try { return DriveApp.getFileById(art.DriveFileID).getBlob(); } catch (e2) { return textOut_("圖片讀取失敗"); }
+  if (vis === "private") {
+    const user = requireActiveUser_(body);
+    if (String(user.UserID) !== String(art.OwnerUserID)) {
+      throw new Error("沒有權限查看這張私人圖片");
     }
-    return textOut_("這件作品沒有可代理的圖片");
   }
 
-  const user = verifySessionToken_(token);
-  if (!user || String(user.UserID) !== String(art.OwnerUserID)) {
-    return textOut_("沒有權限查看這張私人圖片");
-  }
-  if (!art.DriveFileID) return textOut_("這件作品沒有圖片");
   try {
-    return DriveApp.getFileById(art.DriveFileID).getBlob();
-  } catch (e3) {
-    return textOut_("圖片讀取失敗");
+    const blob = DriveApp.getFileById(art.DriveFileID).getBlob();
+    return jsonOut_({
+      success: true,
+      base64: Utilities.base64Encode(blob.getBytes()),
+      mimeType: blob.getContentType() || "image/png",
+    });
+  } catch (e) {
+    throw new Error("圖片讀取失敗");
   }
 }
 
@@ -1523,7 +1530,6 @@ function handleAiGenerate_(body) {
 function doGet(e) {
   try {
     const action = (e.parameter && e.parameter.action) || "list";
-    if (action === "image") return handleImageProxy_(e);
     if (action === "comments") return handleComments_(e.parameter.artworkId);
     return handleListPublic_();
   } catch (err) {
@@ -1543,6 +1549,7 @@ const POST_ACTIONS = {
   "listMine": handleListMine_,
   "materialLibrary": handleMaterialLibrary_,
   "updateVisibility": handleUpdateVisibility_,
+  "image/get": handleImageGet_,
 
   "like": handleLike_,
   "comment": handleComment_,

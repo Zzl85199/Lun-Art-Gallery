@@ -34,14 +34,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       `<div class="print-title">${escapeHtml(book.title)}</div>` +
       book.frames
         .map(
-          (f) => `
+          (f, i) => `
         <div class="print-page">
-          ${f.unavailable ? `<p style="text-align:center;color:#a8402f;">（這一頁的圖片已無法顯示）</p>` : `<img src="${escapeHtml(Api.resolveImageSrc(f))}" alt="${escapeHtml(f.nickname || "")}">`}
+          ${f.unavailable ? `<p style="text-align:center;color:#a8402f;">（這一頁的圖片已無法顯示）</p>` : `<img data-frame-img-index="${i}" alt="${escapeHtml(f.nickname || "")}">`}
           <div class="caption">${escapeHtml(f.caption || "")}</div>
         </div>
       `
         )
         .join("");
+
+    contentEl.querySelectorAll("img[data-frame-img-index]").forEach((img) => {
+      const frame = book.frames[Number(img.dataset.frameImgIndex)];
+      if (frame) Api.setImageSrc(img, frame);
+    });
   } catch (err) {
     statusEl.textContent = "載入失敗：" + err.message;
   }

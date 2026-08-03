@@ -299,7 +299,7 @@ function initBookEditor(user) {
         <div class="my-story-frame" data-frame-index="${i}">
           <button class="my-frame-remove" type="button" title="移除這一格" data-frame-index="${i}">×</button>
           <div class="story-frame-img">
-            ${f.unavailable ? `<div class="no-image-placeholder" style="display:flex;"><span class="no-image-icon">🚫</span><span>圖片已無法顯示</span></div>` : `<img src="${escapeHtml(Api.resolveImageSrc(f))}" alt="${escapeHtml(f.nickname || "")}">`}
+            ${f.unavailable ? `<div class="no-image-placeholder" style="display:flex;"><span class="no-image-icon">🚫</span><span>圖片已無法顯示</span></div>` : `<img data-frame-img-index="${i}" alt="${escapeHtml(f.nickname || "")}">`}
           </div>
           <div class="story-frame-caption"><b>${escapeHtml(f.nickname || "")}</b></div>
           <textarea class="my-frame-caption-input" placeholder="這一頁的文字..." data-frame-index="${i}">${escapeHtml(f.caption || "")}</textarea>
@@ -318,6 +318,11 @@ function initBookEditor(user) {
       <div class="save-status" id="save-status" style="text-align:right;color:#8a7d68;font-size:0.85rem;"></div>
       <div class="my-story-board-dropzone" id="frames-dropzone">${framesHtml}</div>
     `;
+
+    editorEl.querySelectorAll("img[data-frame-img-index]").forEach((img) => {
+      const frame = currentBook.frames[Number(img.dataset.frameImgIndex)];
+      if (frame) Api.setImageSrc(img, frame);
+    });
 
     document.getElementById("book-title-input").addEventListener("input", (e) => {
       currentBook.title = e.target.value;
@@ -393,7 +398,7 @@ function initBookEditor(user) {
       .map(
         (a) => `
         <div class="my-story-pool-item" data-artwork-id="${escapeHtml(a.ID)}">
-          <img src="${escapeHtml(Api.resolveImageSrc(a))}" alt="${escapeHtml(a.DisplayName)}" loading="lazy">
+          <img alt="${escapeHtml(a.DisplayName)}" loading="lazy">
           <span class="pool-item-add" title="加入目前的故事本">＋</span>
           <div class="pool-item-name">${escapeHtml(a.DisplayName)}${a.isMine ? "（我的）" : ""}</div>
         </div>
@@ -402,6 +407,8 @@ function initBookEditor(user) {
       .join("");
 
     poolEl.querySelectorAll(".my-story-pool-item").forEach((el) => {
+      const art = filtered.find((a) => a.ID === el.dataset.artworkId);
+      if (art) Api.setImageSrc(el.querySelector("img"), art);
       el.querySelector(".pool-item-add").addEventListener("click", () => addArtworkToCurrentBook(el.dataset.artworkId));
     });
   }

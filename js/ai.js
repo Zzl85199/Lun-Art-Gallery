@@ -275,7 +275,7 @@ function initAiPage(root, user) {
           .map(
             (a) => `
           <div class="my-story-pool-item reference-option ${selectedReferenceId === a.ID ? "selected" : ""}" data-ref-id="${escapeHtml(a.ID)}">
-            <img src="${escapeHtml(Api.resolveImageSrc(a))}" alt="${escapeHtml(a.DisplayName)}" loading="lazy">
+            <img alt="${escapeHtml(a.DisplayName)}" loading="lazy">
             <div class="pool-item-name">${escapeHtml(a.DisplayName)}</div>
           </div>
         `
@@ -284,6 +284,8 @@ function initAiPage(root, user) {
       </div>
     `;
     referencePicker.querySelectorAll(".reference-option").forEach((el) => {
+      const art = withImages.find((a) => a.ID === el.dataset.refId);
+      if (art) Api.setImageSrc(el.querySelector("img"), art);
       el.addEventListener("click", () => {
         selectedReferenceId = el.dataset.refId;
         referencePicker.querySelectorAll(".reference-option").forEach((o) => o.classList.toggle("selected", o === el));
@@ -367,10 +369,11 @@ function initAiPage(root, user) {
       const art = res.artwork;
       resultEl.innerHTML = `
         <div class="note-card" style="max-width:340px;margin:0 auto;">
-          <div class="note-thumb-wrap"><img src="${escapeHtml(Api.resolveImageSrc(art))}" alt="AI 產生的圖片"></div>
+          <div class="note-thumb-wrap"><img alt="AI 產生的圖片"></div>
           <div class="note-footer-row" style="justify-content:center;">🔒 私人（只有你看得到）</div>
         </div>
       `;
+      Api.setImageSrc(resultEl.querySelector("img"), art);
       renderQuota(res.quota);
       fieldValues[currentType] = {};
       freeformValue = "";
