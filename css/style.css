@@ -1027,6 +1027,21 @@ button {
   color: var(--ink);
 }
 
+.form-row input[type="checkbox"],
+.form-row input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  vertical-align: middle;
+}
+
+.form-row label:has(input[type="checkbox"]),
+.form-row label:has(input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .form-row textarea {
   resize: vertical;
   min-height: 90px;
