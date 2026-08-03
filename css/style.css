@@ -183,9 +183,15 @@ button {
 
 .nav-tabs {
   display: flex;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  max-width: 100%;
 }
+
+.nav-tab { flex: 0 0 auto; }
 
 .nav-tab {
   font-family: var(--font-display-en);
@@ -1572,7 +1578,9 @@ button {
   align-items: center;
   gap: 8px;
   margin-left: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .auth-nickname {
   color: #f5f1e6;

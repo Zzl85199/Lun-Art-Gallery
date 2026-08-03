@@ -365,7 +365,7 @@ function initAiPage(root, user) {
       }
 
       const res = await Api.aiGenerate(finalPrompt, options);
-      showMsg("success", "🎉 圖片產生成功！已存為「私人」作品，可以到「我要投稿」頁面調整公開狀態。");
+      showMsg("success", "🎉 圖片產生成功！已存為「私人」作品，可以到「我要投稿」頁面調整公開狀態。（提醒：私人的 AI 產圖如果一直沒有調整公開範圍，超過一段時間可能會被系統清理，記得要保留的話請到「我要投稿」設為公開或僅畫廊）");
       const art = res.artwork;
       resultEl.innerHTML = `
         <div class="note-card" style="max-width:340px;margin:0 auto;">

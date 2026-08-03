@@ -131,6 +131,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   | `AI_MODEL` | gpt-image-1 | OpenAI 圖片模型 |
   | `AI_SIZE` | 1024x1024 | 圖片尺寸 |
   | `AI_QUALITY` | medium | 圖片品質（gpt-image-1 系列只接受 low/medium/high/auto，不是 dall-e-3 那組 standard/hd） |
+  | `STALE_PRIVATE_AI_DAYS` | 60 | 私人 AI 產圖超過這麼多天沒被公開，`cleanupStalePrivateAiArtworks()` 會視為可清理（見下方「AI 產圖清理」） |
 
 ---
 
@@ -189,7 +190,24 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   開作品」當參考圖，不能拿別人的私人作品。
 - 兩者可以同時使用（角色小抄 + 參考圖），也可以只用其中一種。
 
-## 八、疑難排解：`Unexpected error while getting the method or property getFolderById on object DriveApp`
+## 八、AI 產圖的長期空間管理（選用功能）
+
+學生用 AI 作圖產生的圖片預設是「私人」，如果一直沒有人去把它設為公開或僅畫廊，就會一直占用
+Google Drive 空間。這是選用（預設不會自動執行）的清理機制：
+
+- `cleanupStalePrivateAiArtworks()`：刪除「來源是 AI（`Source=OpenAI`）且目前仍是私人狀態、
+  超過 `Settings.STALE_PRIVATE_AI_DAYS`（預設 60 天）沒有被公開」的作品，同時刪除 Drive 上的
+  原始檔案與 Artworks 分頁裡對應的那一列。**刻意只清理 AI 產圖**，不會動任何學生自己上傳或
+  網址匯入的私人作品（那些可能是特意想保留的東西，不該被系統自動刪除）。
+- 可以隨時在 Apps Script 編輯器手動執行一次 `cleanupStalePrivateAiArtworks()` 立即清一次；
+- 如果想要**每天自動清理**，執行一次 `installStaleImageCleanupTrigger()`（每天凌晨 3 點執行，
+  可重複執行不會裝兩份 trigger）；
+- 想調整幾天算「過期」，改 `Settings` 分頁的 `STALE_PRIVATE_AI_DAYS` 這一列的值即可，不需要
+  重新部署。
+- AI 作圖頁生成成功後，畫面上也會提醒學生「私人的 AI 產圖如果一直沒調整公開範圍，之後可能
+  會被清理」，鼓勵他們自己決定要不要留下來。
+
+## 九、疑難排解：`Unexpected error while getting the method or property getFolderById on object DriveApp`
 
 如果 Script Property 裡的 `DRIVE_BACKUP_FOLDER_ID` 確認格式正確（純 ID、無網址前
 綴、無多餘空白），仍然出現這個錯誤，通常是 Apps Script 專案的**授權範圍
@@ -212,7 +230,20 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
    }
    ```
 
-## 九、測試清單
+### 網頁上出現 `Access denied: DriveApp.`（例如把私人作品改成公開時）
+
+跟上面是同一類問題，但更常出現在**「透過網頁前端呼叫」跟「在編輯器裡直接執行」授權狀態不同
+步**的情況：在編輯器直接執行某函式測試成功，不代表網頁版（部署出去的 Web App）也套用了一樣
+的授權。如果只有網頁上的某些操作（例如把作品從私人改成公開，會呼叫 `setSharing`）出現這個
+錯誤，其他操作（例如上傳圖片）卻正常，請：
+
+1. 確認你**已經照最新版 `Code.gs` 重新部署過新版本**（部署 → 管理部署作業 → 編輯 → 版本選
+   「新版本」→ 部署）——每次改完程式碼都要做這一步，光是存檔不會讓網頁版更新。
+2. 部署新版本後，回到編輯器任意執行一次函式（確保授權畫面沒有被卡住／有新的權限要求時能立
+   刻看到並同意）。
+3. 重新整理網站頁面再測一次。
+
+## 十、測試清單
 
 - [ ] 新帳號登入後狀態為 `Pending`，看到「等待審核」提示，無法投稿/故事接龍/AI
       作圖/建故事本
@@ -244,7 +275,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ---
 
-## 十、注意事項
+## 十一、注意事項
 
 - 這是課堂教學工具，不是正式商用系統：Session 採用簽章 token（HMAC-SHA256 +
   Script Property 密鑰）而非第三方身份提供者的完整 session 管理；Google ID

@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS = {
   AI_MODEL: "gpt-image-1",
   AI_SIZE: "1024x1024",
   AI_QUALITY: "medium",
+  STALE_PRIVATE_AI_DAYS: 60, // 超過這麼多天還維持「私人」的 AI 產圖，清理函式會視為可刪除的候選
 };
 
 /* =========================================================================
@@ -1125,6 +1126,57 @@ function installDailyStoryTrigger() {
     .everyDays(1)
     .create();
   Logger.log("✅ 已安裝每日故事接龍自動結算 trigger（Asia/Taipei，請確認專案時區設定正確）");
+}
+
+/**
+ * 🔧 老師專用（選用功能，預設不會自動執行）：清理「AI 產圖但一直維持私人狀態」超過
+ * Settings.STALE_PRIVATE_AI_DAYS 天（預設 60 天）的作品——同時刪除 Google Drive 上的
+ * 原始檔案與 Artworks 分頁裡的那一列。
+ *
+ * 刻意只清理 Source="OpenAI" 的作品，不動任何「使用者自己上傳/網址匯入」的私人作品——
+ * 因為 AI 測試圖大多是隨手產生、忘記處理的暫存內容，但使用者自己上傳的私人作品可能是
+ * 特意想保留、不想公開的東西，不應該被系統自動刪除。
+ *
+ * 這個函式預設不會自動執行；要啟用請執行一次 installStaleImageCleanupTrigger()。
+ * 也可以隨時手動執行 cleanupStalePrivateAiArtworks() 立即清一次。
+ */
+function cleanupStalePrivateAiArtworks() {
+  const settings = getSettings_();
+  const days = settingNum_(settings, "STALE_PRIVATE_AI_DAYS");
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
+  const rows = rowsWithLineNumbers_(sheet);
+  let deletedCount = 0;
+
+  // 從後面往前刪，避免刪除中間列造成後續列號位移的問題
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const { rowNum, obj: art } = rows[i];
+    if (normalizeVisibility_(art.Visibility) !== "private") continue;
+    if (String(art.Source) !== "OpenAI") continue;
+    const ts = new Date(art.Timestamp);
+    if (isNaN(ts.getTime()) || ts > cutoff) continue;
+
+    if (art.DriveFileID) {
+      try { DriveApp.getFileById(art.DriveFileID).setTrashed(true); } catch (e) { /* 檔案可能已經被手動刪除，忽略 */ }
+    }
+    sheet.deleteRow(rowNum);
+    deletedCount++;
+  }
+
+  invalidateCache_(CONFIG.SHEET_ARTWORKS);
+  Logger.log(`✅ 清理完成：刪除了 ${deletedCount} 件超過 ${days} 天仍維持私人狀態的 AI 產圖`);
+  return { success: true, deletedCount, days };
+}
+
+/** 啟用「每日自動清理過期私人 AI 產圖」（選用；不啟用的話 cleanupStalePrivateAiArtworks 只能手動執行）。
+ *  可安全重複執行，會先移除舊的同名 trigger 再重新安裝，不會裝兩份。 */
+function installStaleImageCleanupTrigger() {
+  ScriptApp.getProjectTriggers().forEach((t) => {
+    if (t.getHandlerFunction() === "cleanupStalePrivateAiArtworks") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("cleanupStalePrivateAiArtworks").timeBased().everyDays(1).atHour(3).create();
+  Logger.log("✅ 已安裝每日自動清理過期私人 AI 產圖的 trigger（每天凌晨 3 點執行一次）");
 }
 
 /** 🔧 老師專用：重置指定班級（或傳入空字串／不傳參數＝全部班級）的故事接龍狀態。
