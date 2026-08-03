@@ -618,6 +618,40 @@ function handleListMine_(body) {
  * 因此私人圖片一律改成：前端用一般的 POST 呼叫（帶 sessionToken）換回
  * base64 圖片內容 + mimeType，前端再組成 data: URI 設定給 <img> 的 src。
  */
+/**
+ * 重要更正 v2：連 setSharing()／getBlob() 都出現「Access denied: DriveApp.」，
+ * 即使是剛剛才用 folder.createFile() 建立、還沒被別的程式碼碰過的檔案也一樣失敗
+ * ——代表問題不是「建立 vs 存取既有檔案」，而是內建 DriveApp 服務本身在這個專案的
+ * 執行環境裡，管理分享權限／讀取內容這幾個方法會被擋下來。
+ *
+ * 解法：改用「進階 Drive API 服務」（左側「服務」＋ Drive API，選 v3）呼叫同樣的功能，
+ * 這是完全不同的呼叫路徑（直接呼叫 Drive REST API v3），繞過內建 DriveApp 封裝。
+ * 檔案的「建立」仍然用 DriveApp.folder.createFile()（這個操作本來就正常運作），
+ * 只有「讀取內容」「修改分享權限」這兩件事改走 Drive 進階服務。
+ */
+function getDriveFileBlob_(driveFileId) {
+  return Drive.Files.get(driveFileId, { alt: "media" });
+}
+
+/** 幫某個檔案設定「任何知道連結的人都能檢視（不能編輯）」的分享權限（進階 Drive API 版本） */
+function makeDriveFileViewableByLink_(driveFileId) {
+  try {
+    Drive.Permissions.create({ role: "reader", type: "anyone" }, driveFileId);
+  } catch (e) {
+    // 可能已經有一樣的分享設定存在，屬於正常情況，忽略即可
+  }
+}
+
+/** 移除某個檔案所有「anyone（知道連結的任何人）」類型的分享權限，只留擁有者自己看得到 */
+function makeDriveFilePrivate_(driveFileId) {
+  const res = Drive.Permissions.list(driveFileId, { fields: "permissions(id,type)" });
+  (res.permissions || []).forEach((p) => {
+    if (p.type === "anyone") {
+      try { Drive.Permissions.remove(driveFileId, p.id); } catch (e) { /* 移除失敗（例如已經被移除過）忽略即可 */ }
+    }
+  });
+}
+
 function handleImageGet_(body) {
   const artworkId = String(body.artworkId || "");
   if (!artworkId) throw new Error("缺少 artworkId");
@@ -636,14 +670,14 @@ function handleImageGet_(body) {
   }
 
   try {
-    const blob = DriveApp.getFileById(art.DriveFileID).getBlob();
+    const blob = getDriveFileBlob_(art.DriveFileID);
     return jsonOut_({
       success: true,
       base64: Utilities.base64Encode(blob.getBytes()),
       mimeType: blob.getContentType() || "image/png",
     });
   } catch (e) {
-    throw new Error("圖片讀取失敗");
+    throw new Error("圖片讀取失敗：" + e.message);
   }
 }
 
@@ -673,7 +707,7 @@ function backupUrlToDrive_(imageUrl, ownerLabel) {
   const folder = getBackupFolder_();
   const fileName = sanitizeFileNamePart_(ownerLabel) + "_" + Date.now() + "." + guessExtension_(blob.getContentType());
   const file = folder.createFile(blob).setName(fileName);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  makeDriveFileViewableByLink_(file.getId());
   return { driveFileId: file.getId(), publicUrl: "https://drive.google.com/uc?export=view&id=" + file.getId() };
 }
 
@@ -697,7 +731,7 @@ function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
 
   let publicUrl = "";
   if (visibility !== "private") {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    makeDriveFileViewableByLink_(file.getId());
     publicUrl = "https://drive.google.com/uc?export=view&id=" + file.getId();
   }
   return { driveFileId: file.getId(), publicUrl };
@@ -705,12 +739,11 @@ function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
 
 function setDriveFileSharing_(driveFileId, visibility) {
   if (!driveFileId) return "";
-  const file = DriveApp.getFileById(driveFileId);
   if (visibility === "private") {
-    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    makeDriveFilePrivate_(driveFileId);
     return "";
   }
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  makeDriveFileViewableByLink_(driveFileId);
   return "https://drive.google.com/uc?export=view&id=" + driveFileId;
 }
 
@@ -1158,7 +1191,7 @@ function cleanupStalePrivateAiArtworks() {
     if (isNaN(ts.getTime()) || ts > cutoff) continue;
 
     if (art.DriveFileID) {
-      try { DriveApp.getFileById(art.DriveFileID).setTrashed(true); } catch (e) { /* 檔案可能已經被手動刪除，忽略 */ }
+      try { Drive.Files.update({ trashed: true }, art.DriveFileID); } catch (e) { /* 檔案可能已經被手動刪除，忽略 */ }
     }
     sheet.deleteRow(rowNum);
     deletedCount++;
@@ -1432,7 +1465,7 @@ function getReferenceImageBlob_(artworkId, user) {
   if (!isOwner && !isPublicApproved) throw new Error("沒有權限使用這張作品當作參考圖");
 
   if (art.DriveFileID) {
-    return DriveApp.getFileById(art.DriveFileID).getBlob();
+    return getDriveFileBlob_(art.DriveFileID);
   }
   if (art.ImageURL) {
     const resp = UrlFetchApp.fetch(art.ImageURL, { muteHttpExceptions: true });

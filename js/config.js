@@ -10,7 +10,7 @@
  * ===============================================================
  */
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyqniFW6Ez_iBAJM4kz6uiL8mb1-awj7GnKaG_fzTEdPwiaesLXAU7Cz850-rn1C7Hz/exec", // 例如 https://script.google.com/macros/s/xxxxxxxx/exec
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby_P4lZVOkrY95BmeoOMQ_dT2Kh8rCpuq-Y9yJlJUMkIYICp9kRtmMpeLsqBChXOYZM/exec", // 例如 https://script.google.com/macros/s/xxxxxxxx/exec
   // 在 Google Cloud Console →「憑證」建立的 OAuth 用戶端 ID（應用程式類型：網頁應用程式）
   GOOGLE_CLIENT_ID: "539277836651-l7se69fsu9d6l75r55kpbj2lmr7enhoh.apps.googleusercontent.com",
   SITE_TITLE: "AI 創作畫廊",
