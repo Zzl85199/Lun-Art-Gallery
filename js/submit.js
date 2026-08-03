@@ -277,7 +277,10 @@ function initSubmitPage(root, user) {
         ? await Api.submitArtworkUpload(Object.assign({ imageBase64: compressed.base64, mimeType: compressed.mimeType }, common))
         : await Api.submitArtworkUrl(Object.assign({ imageUrl: urlInput.value.trim() }, common));
 
-      if (visibility === "private") {
+      if (res.needsManualPublish) {
+        showMsg("pending", "✅ 投稿成功，目前狀態：審核中。");
+        alert("投稿成功，但系統暫時無法自動把圖片設定為公開／僅畫廊可看，已先標記為「審核中」。\n\n請告訴老師，請老師到後端 Google Sheet 的 Artworks 分頁，手動把這件作品的 Approved 欄位改成 TRUE，協助讓它正常上架。");
+      } else if (visibility === "private") {
         showMsg("success", "🎉 投稿成功，已存為私人作品，只有你自己看得到。");
       } else if (res.approved) {
         showMsg("success", "🎉 投稿成功，已直接上架囉！");
@@ -335,13 +338,7 @@ function initSubmitPage(root, user) {
       const img = card.querySelector("img");
       const placeholder = card.querySelector(".no-image-placeholder");
       const art = artworks.find((a) => a.ID === id);
-      if (art.needsProxy) {
-        img.style.display = "block";
-        if (placeholder) placeholder.style.display = "none";
-        Api.setImageSrc(img, art);
-      } else {
-        setupImageWithFallback(img, placeholder, Api.resolveImageSrc(art), art.DriveBackupURL);
-      }
+      setupArtworkImage(img, placeholder, art);
 
       const visSelect = card.querySelector(".submission-visibility");
       const allowStoryInput = card.querySelector(".submission-allow-story");
@@ -356,8 +353,13 @@ function initSubmitPage(root, user) {
         saveBtn.disabled = true;
         msg.textContent = "更新中...";
         try {
-          await Api.updateVisibility(id, visSelect.value, allowStoryInput.checked);
-          msg.textContent = "✅ 已更新";
+          const res = await Api.updateVisibility(id, visSelect.value, allowStoryInput.checked);
+          if (res.needsManualPublish) {
+            msg.textContent = "⏳ 已儲存，狀態：審核中";
+            alert("已儲存，但系統暫時無法自動把圖片設定為公開／僅畫廊可看，已先標記為「審核中」。\n\n請告訴老師，請老師到後端 Google Sheet 的 Artworks 分頁，手動把這件作品的 Approved 欄位改成 TRUE，協助讓它正常上架。");
+          } else {
+            msg.textContent = "✅ 已更新";
+          }
           loadMySubmissions();
         } catch (err) {
           msg.textContent = "❌ " + err.message;

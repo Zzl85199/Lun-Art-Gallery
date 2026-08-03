@@ -532,12 +532,18 @@ function isArtworkViewableBy_(art, user) {
 
 /** 對外公開（畫廊 / 訪客）呈現用的欄位，絕不包含 StudentName / Email / GoogleSub / OwnerUserID / DriveFileID */
 function sanitizeArtworkPublic_(a) {
+  const imageUrl = a.ImageURL || "";
   return {
     ID: a.ID,
     Timestamp: a.Timestamp,
     ClassName: a.ClassName,
     DisplayName: a.Nickname || a.StudentName || "匿名",
-    ImageURL: a.ImageURL || "",
+    ImageURL: imageUrl,
+    // 沒有直接可用網址、但確實有存在 Drive 的檔案時，一律可以透過後端代理讀取——
+    // 不限「僅私人才代理」：就算是公開/僅畫廊的作品，只要 Drive 分享設定當初設定失敗
+    // （例如環境限制造成的權限問題）沒有產生直接網址，一樣可以靠這個代理正常顯示，
+    // 不會因為 Drive 分享設定失敗就整張圖顯示不出來。
+    needsProxy: !imageUrl && !!a.DriveFileID,
     DriveBackupURL: a.DriveBackupURL || "",
     Prompt: a.Prompt || "",
     Description: a.Description || "",
@@ -555,7 +561,6 @@ function sanitizeArtworkOwnerView_(a, user) {
   base.OwnerUserID = a.OwnerUserID;
   base.Approved = parseBoolean_(a.Approved);
   base.isMine = !!user && String(a.OwnerUserID) === String(user.UserID);
-  base.needsProxy = base.Visibility === "private" && !base.ImageURL;
   base.canGoPrivate = !!a.DriveFileID; // 透過網址匯入（無 DriveFileID）的作品無法設為私人
   return base;
 }
@@ -633,13 +638,11 @@ function getDriveFileBlob_(driveFileId) {
   return Drive.Files.get(driveFileId, { alt: "media" });
 }
 
-/** 幫某個檔案設定「任何知道連結的人都能檢視（不能編輯）」的分享權限（進階 Drive API 版本） */
+/** 幫某個檔案設定「任何知道連結的人都能檢視（不能編輯）」的分享權限（進階 Drive API 版本）。
+ *  刻意不吞掉例外——呼叫端（trySetDriveFileSharing_）需要知道這件事到底成不成功，
+ *  才能決定要不要優雅降級（改走後端代理顯示、並把狀態標記為需要老師協助）。 */
 function makeDriveFileViewableByLink_(driveFileId) {
-  try {
-    Drive.Permissions.create({ role: "reader", type: "anyone" }, driveFileId);
-  } catch (e) {
-    // 可能已經有一樣的分享設定存在，屬於正常情況，忽略即可
-  }
+  Drive.Permissions.create({ role: "reader", type: "anyone" }, driveFileId);
 }
 
 /** 移除某個檔案所有「anyone（知道連結的任何人）」類型的分享權限，只留擁有者自己看得到 */
@@ -647,9 +650,32 @@ function makeDriveFilePrivate_(driveFileId) {
   const res = Drive.Permissions.list(driveFileId, { fields: "permissions(id,type)" });
   (res.permissions || []).forEach((p) => {
     if (p.type === "anyone") {
-      try { Drive.Permissions.remove(driveFileId, p.id); } catch (e) { /* 移除失敗（例如已經被移除過）忽略即可 */ }
+      Drive.Permissions.remove(driveFileId, p.id);
     }
   });
+}
+
+/**
+ * 嘗試設定 Drive 檔案的分享狀態，絕不讓呼叫端因為 Drive API 失敗而整個操作報錯。
+ * 回傳 { ok, url }：
+ *   - ok=true：分享設定成功，url 是可以直接顯示的公開網址（private 時 url 是空字串）
+ *   - ok=false：Drive API 呼叫失敗（例如環境限制造成的 Access denied），url 一律是空字串
+ *     ——這時前端會改用「後端代理」讀取圖片內容（needsProxy），畫面還是能正常顯示圖片，
+ *     只是無法產生一個「不經過我們後端」的直接網址；呼叫端（投稿/切換公開範圍）應該把
+ *     這件事反映在 Approved 狀態上，提醒老師需要協助確認。
+ */
+function trySetDriveFileSharing_(driveFileId, visibility) {
+  if (!driveFileId) return { ok: true, url: "" };
+  try {
+    if (visibility === "private") {
+      makeDriveFilePrivate_(driveFileId);
+      return { ok: true, url: "" };
+    }
+    makeDriveFileViewableByLink_(driveFileId);
+    return { ok: true, url: "https://drive.google.com/uc?export=view&id=" + driveFileId };
+  } catch (e) {
+    return { ok: false, url: "" };
+  }
 }
 
 function handleImageGet_(body) {
@@ -707,8 +733,8 @@ function backupUrlToDrive_(imageUrl, ownerLabel) {
   const folder = getBackupFolder_();
   const fileName = sanitizeFileNamePart_(ownerLabel) + "_" + Date.now() + "." + guessExtension_(blob.getContentType());
   const file = folder.createFile(blob).setName(fileName);
-  makeDriveFileViewableByLink_(file.getId());
-  return { driveFileId: file.getId(), publicUrl: "https://drive.google.com/uc?export=view&id=" + file.getId() };
+  const shared = trySetDriveFileSharing_(file.getId(), "public");
+  return { driveFileId: file.getId(), publicUrl: shared.url || "https://drive.google.com/uc?export=view&id=" + file.getId(), shareOk: shared.ok };
 }
 
 /** 把使用者上傳的 base64 圖片存進 Drive；visibility='private' 時完全不設公開分享權限 */
@@ -729,22 +755,10 @@ function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
   const folder = getBackupFolder_();
   const file = folder.createFile(blob);
 
-  let publicUrl = "";
-  if (visibility !== "private") {
-    makeDriveFileViewableByLink_(file.getId());
-    publicUrl = "https://drive.google.com/uc?export=view&id=" + file.getId();
-  }
-  return { driveFileId: file.getId(), publicUrl };
-}
+  if (visibility === "private") return { driveFileId: file.getId(), publicUrl: "", shareOk: true };
 
-function setDriveFileSharing_(driveFileId, visibility) {
-  if (!driveFileId) return "";
-  if (visibility === "private") {
-    makeDriveFilePrivate_(driveFileId);
-    return "";
-  }
-  makeDriveFileViewableByLink_(driveFileId);
-  return "https://drive.google.com/uc?export=view&id=" + driveFileId;
+  const shared = trySetDriveFileSharing_(file.getId(), visibility);
+  return { driveFileId: file.getId(), publicUrl: shared.url, shareOk: shared.ok };
 }
 
 function handleSubmit_(body) {
@@ -764,6 +778,7 @@ function handleSubmit_(body) {
   let imageUrl = "";
   let driveFileId = "";
   let backupUrl = "";
+  let shareOk = true; // Drive 分享設定是否成功；私人作品一律視為「不需要分享」＝成功
 
   if (imageMode === "url") {
     const url = String(body.imageUrl || "").trim();
@@ -774,7 +789,7 @@ function handleSubmit_(body) {
       driveFileId = backed.driveFileId;
       backupUrl = backed.publicUrl;
     } catch (e) {
-      backupUrl = ""; // 備份失敗不擋投稿
+      backupUrl = ""; // 備份失敗不擋投稿（原始網址本身就是公開的，畫廊還是看得到）
     }
   } else {
     const base64Data = String(body.imageBase64 || "");
@@ -783,11 +798,15 @@ function handleSubmit_(body) {
     const uploaded = uploadBase64ToDrive_(base64Data, mimeType, user.Nickname, visibility);
     driveFileId = uploaded.driveFileId;
     imageUrl = uploaded.publicUrl;
+    shareOk = uploaded.shareOk;
   }
 
   const allowStory = visibility === "public" ? !!body.allowStory : false;
   const autoApprove = parseBoolean_(user.ArtworkAutoApprove);
-  const approved = visibility === "private" ? false : autoApprove;
+  // Drive 分享設定失敗時（needsManualPublish），不管 AutoApprove 設定為何，一律先標記成
+  // 「審核中」，避免學生以為已經公開、但其實圖片顯示依賴的機制沒有完全設定成功。
+  const needsManualPublish = visibility !== "private" && !shareOk;
+  const approved = visibility === "private" ? false : needsManualPublish ? false : autoApprove;
 
   const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
   const id = uuid_();
@@ -813,7 +832,7 @@ function handleSubmit_(body) {
   });
   invalidateCache_(CONFIG.SHEET_ARTWORKS);
 
-  return jsonOut_({ success: true, id, approved, visibility });
+  return jsonOut_({ success: true, id, approved, visibility, needsManualPublish });
 }
 
 function handleUpdateVisibility_(body) {
@@ -839,14 +858,21 @@ function handleUpdateVisibility_(body) {
   if (rowNum === -1) throw new Error("找不到這件作品");
 
   const update = { Visibility: newVisibility, AllowStory: newAllowStory };
+  let needsManualPublish = false;
 
   if (art.DriveFileID) {
-    update.ImageURL = setDriveFileSharing_(art.DriveFileID, newVisibility);
+    const shared = trySetDriveFileSharing_(art.DriveFileID, newVisibility);
+    update.ImageURL = shared.url;
+    // Drive 分享設定失敗時，畫面仍會透過後端代理正常顯示圖片（needsProxy），但保險起見
+    // 標記成需要老師協助確認，並強制不自動上架，而不是靜靜地假裝一切都成功了。
+    needsManualPublish = newVisibility !== "private" && !shared.ok;
   }
 
   // 只有「私人 → 非私人」才需要重新走一次審核流程；在 public/gallery_only 之間互換不影響審核狀態
   if (oldVisibility === "private" && newVisibility !== "private") {
-    update.Approved = parseBoolean_(user.ArtworkAutoApprove);
+    update.Approved = needsManualPublish ? false : parseBoolean_(user.ArtworkAutoApprove);
+  } else if (needsManualPublish) {
+    update.Approved = false;
   }
 
   updateObjectRow_(artworksSheet, rowNum, update);
@@ -854,7 +880,7 @@ function handleUpdateVisibility_(body) {
 
   const updatedAll = sheetToObjects_(artworksSheet);
   const updatedArt = updatedAll.find((a) => String(a.ID) === artworkId);
-  return jsonOut_({ success: true, artwork: sanitizeArtworkOwnerView_(updatedArt, user) });
+  return jsonOut_({ success: true, artwork: sanitizeArtworkOwnerView_(updatedArt, user), needsManualPublish });
 }
 
 /* -------------------------------------------------------------------------

@@ -150,6 +150,12 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   改成 `TRUE`，並不會讓已經送出、還在等待審核的舊投稿自動變成已上架**——需要老師
   手動把那幾筆舊資料的 `Approved` 改成 `TRUE`，或請學生重新投稿一次。另外，帳號/
   投稿相關的讀取有 15 秒的暫存（cache），手動改完 Sheet 後最多等 15 秒生效。
+- **學生跳出「請老師協助」的提示視窗**：這代表學生投稿或切換公開範圍時，系統嘗試
+  設定 Google Drive 分享權限失敗了（環境限制造成，詳見下方疑難排解），系統會自動
+  把這件作品標記為 `Approved=FALSE`（審核中），並用後端代理讓圖片還是能正常顯示。
+  老師只需要到 `Artworks` 分頁，找到那一列，確認 `Visibility` 欄位是學生想要的值
+  （`public`／`gallery_only`），把 `Approved` 改成 `TRUE` 即可——不需要額外去 Drive
+  做任何設定，圖片本來就能正常顯示。
 - **調整每人 AI 額度**：`AuthorizedUsers` 分頁改該列的 `QuotaLimit` / `ResetHour`。
 - **手動結算故事接龍**：Apps Script 編輯器函式選單選：
   - `advanceStoryRoundForClass`：先在程式碼上方暫時改成

@@ -93,6 +93,39 @@ function setupImageWithFallback(imgEl, placeholderEl, url, backupUrl) {
   };
 }
 
+/**
+ * 統一版的圖片設定：涵蓋三種情況，畫廊卡片與 Modal 都共用這個函式。
+ * 1. 有直接的公開網址（art.ImageURL）→ 走原本同步流程 + Drive 備援網址
+ * 2. 沒有直接網址但可以透過後端代理讀取（art.needsProxy）→ 非同步抓取內容（抓取中會有
+ *    淡淡的載入動畫），失敗才顯示「尚無圖片」——這讓即使 Drive 分享設定失敗（無法產生
+ *    直接網址），只要後端代理讀取得到內容，畫面還是能正常顯示圖片。
+ * 3. 兩者都沒有 → 直接顯示「尚無圖片」
+ */
+function setupArtworkImage(imgEl, placeholderEl, art) {
+  imgEl.onerror = null;
+  imgEl.classList.remove("img-loading");
+
+  if (art.ImageURL) {
+    setupImageWithFallback(imgEl, placeholderEl, art.ImageURL, art.DriveBackupURL);
+    return;
+  }
+
+  if (art.needsProxy && art.ID) {
+    imgEl.style.display = "block";
+    placeholderEl.style.display = "none";
+    Api.setImageSrc(imgEl, art).then((ok) => {
+      if (!ok) {
+        imgEl.style.display = "none";
+        placeholderEl.style.display = "flex";
+      }
+    });
+    return;
+  }
+
+  imgEl.style.display = "none";
+  placeholderEl.style.display = "flex";
+}
+
 /** 建立一張作品便條紙卡片 DOM。art 需為 sanitizeArtworkPublic_/OwnerView_ 回傳格式（含 DisplayName）。 */
 function createNoteCardEl(art, opts) {
   opts = opts || {};
@@ -103,7 +136,6 @@ function createNoteCardEl(art, opts) {
   card.setAttribute("aria-label", `查看 ${art.DisplayName} 的作品`);
   card.dataset.artworkId = art.ID;
 
-  const imgSrc = Api.resolveImageSrc(art);
   const showVisibilityBadge = opts.showVisibilityBadge && art.Visibility;
 
   card.innerHTML = `
@@ -133,7 +165,7 @@ function createNoteCardEl(art, opts) {
 
   const img = card.querySelector("img");
   const placeholder = card.querySelector(".no-image-placeholder");
-  setupImageWithFallback(img, placeholder, imgSrc, art.DriveBackupURL);
+  setupArtworkImage(img, placeholder, art);
 
   attachTiltEffect(card);
 
@@ -326,7 +358,7 @@ async function openArtworkModal(art) {
   const img = document.getElementById("modal-img");
   const imgPlaceholder = document.getElementById("modal-img-placeholder");
   img.alt = art.DisplayName + " 的 AI 作品";
-  setupImageWithFallback(img, imgPlaceholder, Api.resolveImageSrc(art), art.DriveBackupURL);
+  setupArtworkImage(img, imgPlaceholder, art);
 
   document.getElementById("modal-title").textContent = art.DisplayName;
   document.getElementById("modal-sub").textContent = `${art.ClassName} · ${new Date(art.Timestamp).toLocaleDateString("zh-TW")}${

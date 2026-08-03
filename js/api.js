@@ -51,19 +51,22 @@ const Api = {
   },
 
   /** 幫一個 <img> 元素設定正確的圖片來源：公開圖片直接設定，私人圖片先非同步抓取內容再設定。
-   *  loading/失敗都會反映在該 <img> 上（class 切換 + alt 文字），呼叫端不需要自己處理狀態。 */
+   *  回傳 true/false 代表是否成功，呼叫端可以依此決定失敗時要不要顯示「尚無圖片」預留圖示。 */
   async setImageSrc(imgEl, art) {
-    if (art.ImageURL) { imgEl.src = art.ImageURL; return; }
+    if (art.ImageURL) { imgEl.src = art.ImageURL; return true; }
     if (art.needsProxy && art.ID) {
       imgEl.classList.add("img-loading");
       try {
         imgEl.src = await this.fetchPrivateImageDataUrl(art.ID);
+        return true;
       } catch (err) {
         imgEl.alt = "圖片載入失敗";
+        return false;
       } finally {
         imgEl.classList.remove("img-loading");
       }
     }
+    return false;
   },
 
   async _get(params) {
