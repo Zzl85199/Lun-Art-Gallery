@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS = {
   STORY_BOOK_CHARS_PER_PAGE: 200,
   STORY_BOOK_MAX_ACTIVE: 3,
   AI_DEFAULT_QUOTA_LIMIT: 5,
-  AI_DEFAULT_RESET_HOUR: 23, // Asia/Taipei，配合下方固定的 RESET_MINUTE=59，等於每天 23:59 重置
+  AI_DEFAULT_RESET_HOUR: 0, // Asia/Taipei
   AI_MODEL: "gpt-image-1",
   AI_SIZE: "1024x1024",
   AI_QUALITY: "medium",
@@ -1081,17 +1081,13 @@ function buildRoundPayload_(round, user) {
   const candidates = candidateIds
     .map((id) => artworksById[id])
     .filter(Boolean)
-    .map((a) => {
-      const pub = sanitizeArtworkPublic_(a); // 重用畫廊那套「自己 Drive 連結要清空走代理」的處理
-      return {
-        artworkId: String(a.ID),
-        nickname: a.Nickname || a.StudentName || "匿名",
-        imageUrl: pub.ImageURL,
-        needsProxy: pub.needsProxy,
-        voteCount: voteCount[String(a.ID)] || 0,
-        isMine: String(a.OwnerUserID) === String(user.UserID),
-      };
-    });
+    .map((a) => ({
+      artworkId: String(a.ID),
+      nickname: a.Nickname || a.StudentName || "匿名",
+      imageUrl: a.ImageURL,
+      voteCount: voteCount[String(a.ID)] || 0,
+      isMine: String(a.OwnerUserID) === String(user.UserID),
+    }));
 
   return {
     roundId: round.RoundID,
@@ -1112,14 +1108,12 @@ function buildHonorBoardPayload_(className) {
     const key = String(r.RoundID);
     if (!byRound[key]) byRound[key] = { roundId: key, closedAt: r.ClosedAt, entries: [] };
     const art = artworksById[String(r.ArtworkID)];
-    const pub = art ? sanitizeArtworkPublic_(art) : null;
     byRound[key].entries.push({
       rank: Number(r.Rank),
       artworkId: String(r.ArtworkID),
       votes: Number(r.Votes),
       nickname: art ? (art.Nickname || art.StudentName || "匿名") : "（作品已不存在）",
-      imageUrl: pub ? pub.ImageURL : "",
-      needsProxy: pub ? pub.needsProxy : false,
+      imageUrl: art ? art.ImageURL : "",
     });
   });
 
@@ -1330,15 +1324,14 @@ function hydrateBookFrames_(frames, user) {
     if (!art || !isArtworkViewableBy_(art, user)) {
       return { artworkId: f.artworkId, caption: f.caption || "", unavailable: true };
     }
-    const pub = sanitizeArtworkPublic_(art); // 跟畫廊同一套邏輯：自己 Drive 的直連網址一律清空走代理
     return {
       artworkId: f.artworkId,
       ID: f.artworkId,
       caption: f.caption || "",
       nickname: art.Nickname || art.StudentName || "匿名",
       className: art.ClassName,
-      ImageURL: pub.ImageURL,
-      needsProxy: pub.needsProxy,
+      ImageURL: art.ImageURL || "",
+      needsProxy: normalizeVisibility_(art.Visibility) === "private" && !art.ImageURL,
     };
   });
 }
@@ -1428,11 +1421,10 @@ function handleBooksDelete_(body) {
 /** 計算目前所在的「額度日」窗口起點（Asia/Taipei，依 resetHour 決定每天幾點重置），
  *  回傳格式如 2026-08-01，同一個窗口期間內共用同一組配額。 */
 function getQuotaDateKey_(now, resetHour) {
-  const RESET_MINUTE = 59; // 固定「幾點 59 分」重置，例如 resetHour=23 就是每天 23:59
   const taipeiMs = now.getTime() + TAIPEI_OFFSET_MS;
   const t = new Date(taipeiMs);
   let y = t.getUTCFullYear(), m = t.getUTCMonth(), d = t.getUTCDate();
-  const boundaryTodayUtcMs = Date.UTC(y, m, d, resetHour, RESET_MINUTE, 0) - TAIPEI_OFFSET_MS;
+  const boundaryTodayUtcMs = Date.UTC(y, m, d, resetHour, 0, 0) - TAIPEI_OFFSET_MS;
   let windowStartMs = boundaryTodayUtcMs;
   if (now.getTime() < boundaryTodayUtcMs) windowStartMs -= 24 * 3600 * 1000;
   const windowStartTaipei = new Date(windowStartMs + TAIPEI_OFFSET_MS);
