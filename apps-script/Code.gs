@@ -519,6 +519,23 @@ function handleAuthLogout_(body) {
 
 const VISIBILITY_VALUES = ["public", "gallery_only", "private"];
 
+/**
+ * 產生一個「可以被任何網站的 <img> 直接嵌入」的 Google Drive 圖片網址。
+ *
+ * 不要再用 https://drive.google.com/uc?export=view&id=... ——Google 在 2024 年停用第三方
+ * Cookie 相關政策時，就把這個路徑對外部網站的嵌入全面擋掉了，一律回 403 Forbidden，
+ * 不管檔案分享權限開得多大都一樣。這就是「權限全開卻還是看不到圖」的原因。
+ *
+ * 目前可用的兩個端點：
+ *   1. https://lh3.googleusercontent.com/d/<ID>        ← 原尺寸，本專案採用
+ *      （可加 =w1200 / =s800 指定寬度或長邊，例如 .../d/<ID>=w1200）
+ *   2. https://drive.google.com/thumbnail?id=<ID>&sz=w1000  ← 縮圖，同頁圖片一多容易被限流
+ * 前提都是檔案必須設成「知道連結的任何人皆可檢視」。
+ */
+function driveDisplayUrl_(fileId) {
+  return "https://lh3.googleusercontent.com/d/" + fileId;
+}
+
 function normalizeVisibility_(v) {
   const s = String(v || "public").trim().toLowerCase();
   return VISIBILITY_VALUES.includes(s) ? s : "public";
@@ -534,21 +551,27 @@ function isArtworkViewableBy_(art, user) {
 /** 對外公開（畫廊 / 訪客）呈現用的欄位，絕不包含 StudentName / Email / GoogleSub / OwnerUserID / DriveFileID */
 function sanitizeArtworkPublic_(a) {
   const rawImageUrl = a.ImageURL || "";
-  // Google Drive 自己的「uc?export=view」公開連結，直接當 <img src> 用經常不穩定（有時會被
-  // Google 導向病毒掃描確認頁、或被少數瀏覽器的防護機制擋掉），所以即使當初分享設定成功、
-  // 拿得到這個網址，畫面顯示也一律改用後端代理讀取內容，只有「網址匯入」（真正的外部圖床
-  // 連結，例如 imgur/meee）才直接使用這個網址——這樣圖片顯示不再依賴 Drive 公開連結能不能
-  // 正常被瀏覽器嵌入，穩定性大幅提高。
+  // Google 自 2024 起已封鎖「drive.google.com/uc?export=view」被外部網站當 <img src> 直接
+  // 嵌入（一律回 403 Forbidden），所以舊資料裡的 uc 連結一定顯示不出來。
+  // 正確做法是改用 Google 自己的圖片 CDN：https://lh3.googleusercontent.com/d/<FILE_ID>
+  // ——只要檔案是「知道連結的任何人皆可檢視」，這個網址可以被任何網站直接嵌入。
+  // 只有 private 作品沒有公開網址，才需要走後端 base64 代理（needsProxy）。
   const isOwnDriveLink = rawImageUrl.indexOf("https://drive.google.com/uc") === 0;
-  const displayImageUrl = isOwnDriveLink ? "" : rawImageUrl;
+  const vis = normalizeVisibility_(a.Visibility);
+  let displayImageUrl = isOwnDriveLink ? "" : rawImageUrl;
+  if (!displayImageUrl && vis !== "private" && a.DriveFileID) {
+    displayImageUrl = driveDisplayUrl_(a.DriveFileID);
+  }
   return {
     ID: a.ID,
     Timestamp: a.Timestamp,
     ClassName: a.ClassName,
     DisplayName: a.Nickname || a.StudentName || "匿名",
     ImageURL: displayImageUrl,
-    needsProxy: !displayImageUrl && !!a.DriveFileID,
-    DriveBackupURL: a.DriveBackupURL || "",
+    // needsProxy 現在的意思是「這件作品可以走後端代理」——前端會在直接網址載入失敗時
+    // 自動退回代理，而不是一開始就用代理（代理很慢、又會吃 Apps Script 執行配額）。
+    needsProxy: !!a.DriveFileID,
+    DriveBackupURL: vis !== "private" && a.DriveFileID ? driveDisplayUrl_(a.DriveFileID) : "",
     Prompt: a.Prompt || "",
     Description: a.Description || "",
     AITool: a.AITool || "",
@@ -676,7 +699,7 @@ function trySetDriveFileSharing_(driveFileId, visibility) {
       return { ok: true, url: "" };
     }
     makeDriveFileViewableByLink_(driveFileId);
-    return { ok: true, url: "https://drive.google.com/uc?export=view&id=" + driveFileId };
+    return { ok: true, url: driveDisplayUrl_(driveFileId) };
   } catch (e) {
     return { ok: false, url: "" };
   }
@@ -738,7 +761,7 @@ function backupUrlToDrive_(imageUrl, ownerLabel) {
   const fileName = sanitizeFileNamePart_(ownerLabel) + "_" + Date.now() + "." + guessExtension_(blob.getContentType());
   const file = folder.createFile(blob).setName(fileName);
   const shared = trySetDriveFileSharing_(file.getId(), "public");
-  return { driveFileId: file.getId(), publicUrl: shared.url || "https://drive.google.com/uc?export=view&id=" + file.getId(), shareOk: shared.ok };
+  return { driveFileId: file.getId(), publicUrl: shared.url || driveDisplayUrl_(file.getId()), shareOk: shared.ok };
 }
 
 /** 把使用者上傳的 base64 圖片存進 Drive；visibility='private' 時完全不設公開分享權限 */

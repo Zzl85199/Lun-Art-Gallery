@@ -53,7 +53,19 @@ const Api = {
   /** 幫一個 <img> 元素設定正確的圖片來源：公開圖片直接設定，私人圖片先非同步抓取內容再設定。
    *  回傳 true/false 代表是否成功，呼叫端可以依此決定失敗時要不要顯示「尚無圖片」預留圖示。 */
   async setImageSrc(imgEl, art) {
-    if (art.ImageURL) { imgEl.src = art.ImageURL; return true; }
+    if (art.ImageURL) {
+      // 直接網址優先；載入失敗（例如 Drive 檔案分享權限被關掉）才退回後端代理
+      if (art.needsProxy && art.ID) {
+        imgEl.onerror = () => {
+          imgEl.onerror = null;
+          this.fetchPrivateImageDataUrl(art.ID)
+            .then((u) => { imgEl.src = u; })
+            .catch(() => { imgEl.alt = "圖片載入失敗"; });
+        };
+      }
+      imgEl.src = art.ImageURL;
+      return true;
+    }
     if (art.needsProxy && art.ID) {
       imgEl.classList.add("img-loading");
       try {

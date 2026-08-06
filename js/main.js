@@ -105,25 +105,47 @@ function setupArtworkImage(imgEl, placeholderEl, art) {
   imgEl.onerror = null;
   imgEl.classList.remove("img-loading");
 
-  if (art.ImageURL) {
-    setupImageWithFallback(imgEl, placeholderEl, art.ImageURL, art.DriveBackupURL);
+  // 依序嘗試：原始網址（圖床 or Drive 的 lh3 CDN）→ Drive 備援網址 → 後端 base64 代理
+  const chain = [];
+  if (art.ImageURL) chain.push(art.ImageURL);
+  if (art.DriveBackupURL && art.DriveBackupURL !== art.ImageURL) chain.push(art.DriveBackupURL);
+
+  if (!chain.length && !(art.needsProxy && art.ID)) {
+    imgEl.style.display = "none";
+    placeholderEl.style.display = "flex";
     return;
   }
 
-  if (art.needsProxy && art.ID) {
-    imgEl.style.display = "block";
-    placeholderEl.style.display = "none";
-    Api.setImageSrc(imgEl, art).then((ok) => {
-      if (!ok) {
-        imgEl.style.display = "none";
-        placeholderEl.style.display = "flex";
-      }
-    });
-    return;
-  }
+  imgEl.style.display = "block";
+  placeholderEl.style.display = "none";
 
-  imgEl.style.display = "none";
-  placeholderEl.style.display = "flex";
+  let stage = 0;
+  const giveUp = () => {
+    imgEl.onerror = null;
+    imgEl.classList.remove("img-loading");
+    imgEl.style.display = "none";
+    placeholderEl.style.display = "flex";
+  };
+
+  const tryNext = () => {
+    if (stage < chain.length) {
+      imgEl.src = chain[stage++];
+      return;
+    }
+    // 所有直接網址都失敗了，才動用後端代理（慢、且吃 Apps Script 配額，所以放最後）
+    imgEl.onerror = null;
+    if (art.needsProxy && art.ID) {
+      imgEl.classList.add("img-loading");
+      Api.fetchPrivateImageDataUrl(art.ID)
+        .then((dataUrl) => { imgEl.classList.remove("img-loading"); imgEl.src = dataUrl; })
+        .catch(giveUp);
+    } else {
+      giveUp();
+    }
+  };
+
+  imgEl.onerror = tryNext;
+  tryNext();
 }
 
 /** 建立一張作品便條紙卡片 DOM。art 需為 sanitizeArtworkPublic_/OwnerView_ 回傳格式（含 DisplayName）。 */
