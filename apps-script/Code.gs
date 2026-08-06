@@ -165,6 +165,15 @@ function updateObjectRow_(sheet, rowNum, obj) {
   });
 }
 
+/** 錯誤訊息回傳前先淨化：Apps Script 有些內建錯誤（例如進階服務解析二進位失敗）會把
+ *  整包檔案位元組塞進 message，直接丟回前端會在畫面上噴出一長串亂碼。這裡砍成 300 字。 */
+function safeErrorMessage_(err) {
+  let msg = String((err && err.message) || err || "發生未知的錯誤");
+  msg = msg.replace(/[^\x20-\x7E\u3000-\u9FFF\uFF00-\uFFEF]/g, "");
+  if (msg.length > 300) msg = msg.slice(0, 300) + "…（訊息過長已截斷，完整內容請看 Apps Script 執行記錄）";
+  return msg;
+}
+
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -661,8 +670,35 @@ function handleListMine_(body) {
  * 檔案的「建立」仍然用 DriveApp.folder.createFile()（這個操作本來就正常運作），
  * 只有「讀取內容」「修改分享權限」這兩件事改走 Drive 進階服務。
  */
+/**
+ * 重要更正 v3：Drive 進階服務的 Drive.Files.get(id, { alt: "media" }) 是**壞的**。
+ * 這是 Google 官方已知的問題（Issue Tracker 有紀錄，Google Workspace 開發者關係團隊
+ * 自己也寫文章確認過）：進階服務會把回應當成 JSON 去解析，但 alt=media 回來的是圖片
+ * 二進位內容，解析失敗後它會把整包原始位元組塞進錯誤訊息丟出來，長相就是：
+ *
+ *   Response Code: 200. Message: ‰PNG IHDR ... c2pa ... <svg ...
+ *
+ * ——HTTP 明明是 200（檔案讀取其實成功了），卻變成一個例外。這同時造成兩個症狀：
+ *   1. 畫廊裡直接上傳的圖片走 needsProxy 代理時失敗 →「圖片載入失敗」
+ *   2. AI 作圖選了「從我的作品選一張」當參考圖時 →「產生失敗：Response Code: 200...」
+ *
+ * 正解是直接用 UrlFetchApp 打 Drive REST API v3 的下載端點，自己帶上這個指令碼的
+ * OAuth token。這條路完全繞開進階服務的 JSON 解析，拿回來的就是乾淨的 Blob。
+ */
 function getDriveFileBlob_(driveFileId) {
-  return Drive.Files.get(driveFileId, { alt: "media" });
+  const url =
+    "https://www.googleapis.com/drive/v3/files/" +
+    encodeURIComponent(driveFileId) +
+    "?alt=media&supportsAllDrives=true";
+  const resp = UrlFetchApp.fetch(url, {
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  const code = resp.getResponseCode();
+  if (code !== 200) {
+    throw new Error("Drive 檔案讀取失敗（HTTP " + code + "）");
+  }
+  return resp.getBlob();
 }
 
 /** 幫某個檔案設定「任何知道連結的人都能檢視（不能編輯）」的分享權限（進階 Drive API 版本）。
@@ -1552,15 +1588,22 @@ function getReferenceImageBlob_(artworkId, user) {
   const isPublicApproved = normalizeVisibility_(art.Visibility) === "public" && parseBoolean_(art.Approved);
   if (!isOwner && !isPublicApproved) throw new Error("沒有權限使用這張作品當作參考圖");
 
+  // OpenAI 的 /images/edits 是 multipart 上傳，Blob 一定要有正確的檔名與副檔名，
+  // 否則會被判定成無效的檔案欄位，所以這裡統一補上名稱。
+  let blob;
   if (art.DriveFileID) {
-    return getDriveFileBlob_(art.DriveFileID);
-  }
-  if (art.ImageURL) {
+    blob = getDriveFileBlob_(art.DriveFileID);
+  } else if (art.ImageURL) {
     const resp = UrlFetchApp.fetch(art.ImageURL, { muteHttpExceptions: true });
     if (resp.getResponseCode() !== 200) throw new Error("參考圖片下載失敗");
-    return resp.getBlob();
+    blob = resp.getBlob();
+  } else {
+    throw new Error("這張作品沒有可用的圖片資料");
   }
-  throw new Error("這張作品沒有可用的圖片資料");
+
+  const ct = blob.getContentType() || "";
+  if (ct.indexOf("image/") !== 0) throw new Error("參考圖不是有效的圖片檔");
+  return blob.setName("reference." + guessExtension_(ct));
 }
 
 /** gpt-image-1 系列只接受 low/medium/high/auto；如果 Settings 分頁裡還留著舊版
@@ -1706,7 +1749,7 @@ function doGet(e) {
     if (action === "comments") return handleComments_(e.parameter.artworkId);
     return handleListPublic_();
   } catch (err) {
-    return jsonOut_({ error: err.message });
+    return jsonOut_({ error: safeErrorMessage_(err) });
   }
 }
 
@@ -1748,7 +1791,7 @@ function doPost(e) {
     if (!handler) return jsonOut_({ error: "未知的 action：" + action });
     return handler(body);
   } catch (err) {
-    return jsonOut_({ error: err.message });
+    return jsonOut_({ error: safeErrorMessage_(err) });
   }
 }
 
