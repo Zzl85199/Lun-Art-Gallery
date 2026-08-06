@@ -85,7 +85,7 @@ function initRoundAndHonorBoard(user) {
         const isMyVote = round.myVoteArtworkId === c.artworkId;
         return `
           <div class="story-vote-card ${isMyVote ? "is-my-vote" : ""}" data-artwork-id="${escapeHtml(c.artworkId)}">
-            <div class="story-vote-img"><img src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.nickname)} 的作品" loading="lazy"></div>
+            <div class="story-vote-img"><img data-vote-img="${escapeHtml(c.artworkId)}" alt="${escapeHtml(c.nickname)} 的作品" loading="lazy"></div>
             <div class="story-vote-info"><b>${escapeHtml(c.nickname)}</b></div>
             <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${pct}%;"></div></div>
             <div class="vote-count-label">${c.voteCount} 票（${pct}%）</div>
@@ -100,6 +100,11 @@ function initRoundAndHonorBoard(user) {
         `;
       })
       .join("")}</div>`;
+
+    roundBody.querySelectorAll("[data-vote-img]").forEach((img) => {
+      const c = round.candidates.find((x) => x.artworkId === img.dataset.voteImg);
+      if (c) Api.setImageSrc(img, { ImageURL: c.imageUrl, needsProxy: c.needsProxy, ID: c.artworkId });
+    });
 
     roundBody.querySelectorAll(".vote-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
@@ -117,7 +122,7 @@ function initRoundAndHonorBoard(user) {
             (c, i) => `
           <div class="standings-row">
             <span class="standings-rank">${RANK_MEDALS[i + 1] || i + 1}</span>
-            <img class="standings-thumb" src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(c.nickname)}">
+            <img class="standings-thumb" data-standings-img="${escapeHtml(c.artworkId)}" alt="${escapeHtml(c.nickname)}">
             <span class="standings-name">${escapeHtml(c.nickname)}${round.myVoteArtworkId === c.artworkId ? "（你投的）" : ""}</span>
             <span class="standings-votes">${c.voteCount} 票 · ${totalVotes > 0 ? Math.round((c.voteCount / totalVotes) * 100) : 0}%</span>
           </div>
@@ -126,6 +131,11 @@ function initRoundAndHonorBoard(user) {
           .join("")}
       </div>
     `;
+
+    standingsEl.querySelectorAll("[data-standings-img]").forEach((img) => {
+      const c = round.candidates.find((x) => x.artworkId === img.dataset.standingsImg);
+      if (c) Api.setImageSrc(img, { ImageURL: c.imageUrl, needsProxy: c.needsProxy, ID: c.artworkId });
+    });
 
     startCountdown(round.estimatedEndsAt);
   }
@@ -165,7 +175,7 @@ function initRoundAndHonorBoard(user) {
                 (e) => `
               <div class="honor-entry">
                 <span class="honor-rank">${RANK_MEDALS[e.rank] || e.rank}</span>
-                ${e.imageUrl ? `<img src="${escapeHtml(e.imageUrl)}" alt="${escapeHtml(e.nickname)}">` : ""}
+                ${e.imageUrl || e.needsProxy ? `<img data-honor-img="${escapeHtml(e.artworkId)}" alt="${escapeHtml(e.nickname)}">` : ""}
                 <span class="honor-name">${escapeHtml(e.nickname)}</span>
                 <span class="honor-votes">${e.votes} 票</span>
               </div>
@@ -177,6 +187,12 @@ function initRoundAndHonorBoard(user) {
       `
       )
       .join("");
+
+    const allEntries = rounds.flatMap((r) => r.entries);
+    honorEl.querySelectorAll("[data-honor-img]").forEach((img) => {
+      const e = allEntries.find((x) => x.artworkId === img.dataset.honorImg);
+      if (e) Api.setImageSrc(img, { ImageURL: e.imageUrl, needsProxy: e.needsProxy, ID: e.artworkId });
+    });
   }
 
   async function castVote(artworkId) {
