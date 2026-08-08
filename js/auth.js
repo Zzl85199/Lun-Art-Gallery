@@ -48,6 +48,10 @@ const Auth = {
   },
 
   _renderHeaderState() {
+    // 未登入時，導覽列上的「我的頁面 / AI 作圖 / 故事接龍」（class="auth-only"）
+    // 會被 CSS 隱藏；登入後才把 is-logged-in 掛到 <body> 讓它們顯示出來。
+    document.body.classList.toggle("is-logged-in", !!this.currentUser);
+
     const slot = document.getElementById("auth-slot");
     if (!slot) return;
 

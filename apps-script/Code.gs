@@ -36,8 +36,11 @@ const DEFAULT_SETTINGS = {
   STORY_BOOK_MAX_PAGES: 30,
   STORY_BOOK_CHARS_PER_PAGE: 200,
   STORY_BOOK_MAX_ACTIVE: 3,
-  AI_DEFAULT_QUOTA_LIMIT: 5,
-  AI_DEFAULT_RESET_HOUR: 23, // Asia/Taipei，配合下方固定的 RESET_MINUTE=59，等於每天 23:59 重置
+  AI_DEFAULT_QUOTA_LIMIT: 30,
+  AI_DEFAULT_RESET_HOUR: 23, // Asia/Taipei，配合下方固定的 RESET_MINUTE=59，等於每天 23:59:59 重置
+  // 每個帳號最多能擁有幾件作品；達到上限就不再讓 AI 作圖產生新圖。
+  // ★ 要調整請同步修改前端 js/config.js 的 MAX_ARTWORKS_PER_USER。
+  MAX_ARTWORKS_PER_USER: 94,
   AI_MODEL: "gpt-image-1",
   AI_SIZE: "1024x1024",
   AI_QUALITY: "medium",
@@ -1487,11 +1490,12 @@ function handleBooksDelete_(body) {
 /** 計算目前所在的「額度日」窗口起點（Asia/Taipei，依 resetHour 決定每天幾點重置），
  *  回傳格式如 2026-08-01，同一個窗口期間內共用同一組配額。 */
 function getQuotaDateKey_(now, resetHour) {
-  const RESET_MINUTE = 59; // 固定「幾點 59 分」重置，例如 resetHour=23 就是每天 23:59
+  const RESET_MINUTE = 59; // 固定「幾點 59 分」重置，例如 resetHour=23 就是每天 23:59:59
+  const RESET_SECOND = 59; // 讓重置時間正好落在 23:59:59，前端顯示的字樣也才會是 23:59:59
   const taipeiMs = now.getTime() + TAIPEI_OFFSET_MS;
   const t = new Date(taipeiMs);
   let y = t.getUTCFullYear(), m = t.getUTCMonth(), d = t.getUTCDate();
-  const boundaryTodayUtcMs = Date.UTC(y, m, d, resetHour, RESET_MINUTE, 0) - TAIPEI_OFFSET_MS;
+  const boundaryTodayUtcMs = Date.UTC(y, m, d, resetHour, RESET_MINUTE, RESET_SECOND) - TAIPEI_OFFSET_MS;
   let windowStartMs = boundaryTodayUtcMs;
   if (now.getTime() < boundaryTodayUtcMs) windowStartMs -= 24 * 3600 * 1000;
   const windowStartTaipei = new Date(windowStartMs + TAIPEI_OFFSET_MS);
@@ -1501,11 +1505,54 @@ function getQuotaDateKey_(now, resetHour) {
   return { dateKey: `${y2}-${m2}-${d2}`, nextResetIso: new Date(windowStartMs + 24 * 3600 * 1000).toISOString() };
 }
 
+/**
+ * DateKey 正規化。
+ *
+ * 陷阱：dateKey 是「2026-08-06」這種字串，但 appendRow()／setValue() 寫進 Google Sheet 時，
+ * 儲存格會沿用「使用者手動輸入」的解析規則，把它自動判定成**日期型別**存起來。
+ * 之後用 getValues() 讀回來拿到的就不是字串，而是一個 Date 物件，
+ * String(Date) 會變成 "Thu Aug 06 2026 00:00:00 GMT+0800 (台北標準時間)"，
+ * 永遠不可能等於 "2026-08-06" —— 於是每一次比對都失敗。
+ *
+ * 這個函式把兩種型別都收斂回 yyyy-MM-dd 字串，舊資料（Date）與新資料（純文字）都能正確比對。
+ */
+function normalizeDateKey_(v) {
+  if (v instanceof Date) {
+    let tz = "Asia/Taipei";
+    try { tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || tz; } catch (e) { /* 用預設 */ }
+    return Utilities.formatDate(v, tz, "yyyy-MM-dd");
+  }
+  return String(v == null ? "" : v).trim();
+}
+
 function findAIUsageRow_(userId, dateKey) {
+  const target = normalizeDateKey_(dateKey);
   const found = rowsWithLineNumbers_(getSheet_(CONFIG.SHEET_AI_USAGE)).find(
-    (r) => String(r.obj.UserID) === String(userId) && String(r.obj.DateKey) === String(dateKey)
+    (r) => String(r.obj.UserID) === String(userId) && normalizeDateKey_(r.obj.DateKey) === target
   );
   return found ? { rowNum: found.rowNum, row: found.obj } : { rowNum: -1, row: null };
+}
+
+/** 把 AIUsage 的 DateKey 整欄設成純文字格式（"@"），避免 yyyy-MM-dd 被自動轉成日期型別。 */
+function forceDateKeyColumnAsText_(sheet) {
+  try {
+    const col = colIndex_(sheet, "DateKey");
+    const rows = Math.max(1, sheet.getMaxRows() - 1);
+    sheet.getRange(2, col, rows, 1).setNumberFormat("@");
+  } catch (e) { /* 格式設不了不影響正確性，讀取端的 normalizeDateKey_ 仍然擋得住 */ }
+}
+
+/** 把已經被存成日期型別的舊 DateKey 一次改寫回 yyyy-MM-dd 純文字，讓試算表看起來也正常。 */
+function repairAIUsageDateKeys_(sheet) {
+  try {
+    const col = colIndex_(sheet, "DateKey");
+    const last = sheet.getLastRow();
+    if (last < 2) { forceDateKeyColumnAsText_(sheet); return; }
+    const range = sheet.getRange(2, col, last - 1, 1);
+    const fixed = range.getValues().map((r) => [r[0] === "" || r[0] == null ? "" : normalizeDateKey_(r[0])]);
+    forceDateKeyColumnAsText_(sheet);
+    range.setValues(fixed);
+  } catch (e) { /* 修不了就算了，讀取端仍會正規化 */ }
 }
 
 function computeQuotaSnapshot_(user) {
@@ -1539,8 +1586,11 @@ function reserveAiQuota_(user) {
     if (limit > 0 && used >= limit) return { ok: false, dateKey, rowNum: -1 };
 
     if (rowNum === -1) {
+      // 先把 DateKey 欄位鎖成純文字格式，新寫入的 "2026-08-06" 才不會被 Sheet 轉成日期
+      forceDateKeyColumnAsText_(sheet);
       appendObjectRow_(sheet, { DateKey: dateKey, UserID: user.UserID, Mode: user.QuotaMode || "count", UsedCount: 1, InputTokens: 0, OutputTokens: 0, UpdatedAt: new Date() });
-      return { ok: true, dateKey, rowNum: -1 };
+      // 回傳真正的列號（不是 -1），讓後續記錄 token 時可以直接用，不必再查一次
+      return { ok: true, dateKey, rowNum: sheet.getLastRow() };
     }
     sheet.getRange(rowNum, colIndex_(sheet, "UsedCount")).setValue(used + 1);
     sheet.getRange(rowNum, colIndex_(sheet, "UpdatedAt")).setValue(new Date());
@@ -1565,17 +1615,61 @@ function refundAiQuota_(userId, dateKey) {
   }
 }
 
-function recordAiTokenUsage_(userId, dateKey, inputTokens, outputTokens) {
-  if (!inputTokens && !outputTokens) return;
-  const sheet = getSheet_(CONFIG.SHEET_AI_USAGE);
-  const { rowNum, row } = findAIUsageRow_(userId, dateKey);
-  if (rowNum === -1) return;
-  const curIn = Number(row.InputTokens || 0);
-  const curOut = Number(row.OutputTokens || 0);
-  updateObjectRow_(sheet, rowNum, {
-    InputTokens: curIn + (Number(inputTokens) || 0),
-    OutputTokens: curOut + (Number(outputTokens) || 0),
-  });
+/**
+ * 記錄這次呼叫的 token 用量。
+ *
+ * 之前這個函式有三個「安靜地 return」的分支（usage 不存在、兩個 token 都是 0、找不到列），
+ * 任何一個成立都會讓試算表停在 0，而且**完全沒有任何訊息**，所以壞了好幾天都沒人發現。
+ * 現在每一條失敗路徑都會寫進執行記錄，並且：
+ *   - 優先使用 reserveAiQuota_ 當初就已經確定的列號，不再重新查表（少一次可能失敗的查詢）
+ *   - 整段放進 lock，避免兩次生成同時 read-modify-write 造成其中一次的 token 被蓋掉
+ */
+function recordAiTokenUsage_(userId, dateKey, inputTokens, outputTokens, knownRowNum) {
+  const inTok = Number(inputTokens) || 0;
+  const outTok = Number(outputTokens) || 0;
+  if (!inTok && !outTok) {
+    console.warn("[AIUsage] token 用量是 0，OpenAI 回應裡可能沒有 usage 欄位。user=" + userId + " date=" + dateKey);
+    return;
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getSheet_(CONFIG.SHEET_AI_USAGE);
+    let rowNum = Number(knownRowNum) > 1 ? Number(knownRowNum) : -1;
+    let row = null;
+
+    if (rowNum > 1) {
+      const headers = getHeaderRow_(sheet);
+      const values = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+      row = {};
+      headers.forEach((h, i) => { row[h] = values[i]; });
+      // 保險：確認這一列真的是這個人、這一天的（列號可能因為手動插入/刪除列而位移）
+      if (String(row.UserID) !== String(userId) || normalizeDateKey_(row.DateKey) !== normalizeDateKey_(dateKey)) {
+        rowNum = -1;
+        row = null;
+      }
+    }
+
+    if (rowNum === -1) {
+      const found = findAIUsageRow_(userId, dateKey);
+      rowNum = found.rowNum;
+      row = found.row;
+    }
+
+    if (rowNum === -1) {
+      console.error("[AIUsage] 找不到對應的用量列，token 沒有記錄到。user=" + userId + " date=" + dateKey);
+      return;
+    }
+
+    updateObjectRow_(sheet, rowNum, {
+      InputTokens: (Number(row.InputTokens) || 0) + inTok,
+      OutputTokens: (Number(row.OutputTokens) || 0) + outTok,
+      UpdatedAt: new Date(),
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** 取出某件作品的圖片 Blob，作為 AI 圖片編輯（角色參考）的輸入。只允許：
@@ -1626,6 +1720,15 @@ function handleAiGenerate_(body) {
   const referenceArtworkId = String(body.referenceArtworkId || "").trim();
   const referenceImageBase64 = String(body.referenceImageBase64 || "").trim();
   const referenceImageMimeType = String(body.referenceImageMimeType || "").trim();
+
+  // 作品數上限：達到上限就不給產圖（前端也會先擋一次，這裡是防止繞過前端）
+  const maxArtworks = settingNum_(getSettings_(), "MAX_ARTWORKS_PER_USER");
+  if (maxArtworks > 0) {
+    const myCount = getArtworksAll_().filter((a) => String(a.OwnerUserID) === String(user.UserID)).length;
+    if (myCount >= maxArtworks) {
+      throw new Error("請先刪除一些作品再來產圖吧！（目前 " + myCount + " 件，上限 " + maxArtworks + " 件）");
+    }
+  }
 
   const reservation = reserveAiQuota_(user);
   if (!reservation.ok) throw new Error("你今天的 AI 作圖額度已經用完了，請明天再來，或請老師調整額度");
@@ -1720,7 +1823,11 @@ function handleAiGenerate_(body) {
     invalidateCache_(CONFIG.SHEET_ARTWORKS);
 
     if (data.usage) {
-      recordAiTokenUsage_(user.UserID, reservation.dateKey, data.usage.input_tokens, data.usage.output_tokens);
+      console.log("[AIUsage] OpenAI usage = " + JSON.stringify(data.usage));
+      recordAiTokenUsage_(user.UserID, reservation.dateKey, data.usage.input_tokens, data.usage.output_tokens, reservation.rowNum);
+    } else {
+      // 這裡是「額度顯示正常但 token 一直是 0」最可能的兇手，一定要留下痕跡
+      console.warn("[AIUsage] 這次回應沒有 usage 欄位，model=" + model + "，回應的最外層 key = " + Object.keys(data).join(","));
     }
 
     const refreshedUser = findUserById_(user.UserID);
@@ -1730,6 +1837,10 @@ function handleAiGenerate_(body) {
         ID: id, Timestamp: new Date().toISOString(), ClassName: user.ClassName, Nickname: user.Nickname,
         ImageURL: "", DriveBackupURL: "", Prompt: prompt, Description: "", AITool: "OpenAI", Tags: "",
         Likes: 0, Approved: false, OwnerUserID: user.UserID, Visibility: "private", AllowStory: false,
+        // 一定要帶 DriveFileID：private 作品沒有公開網址，前端完全靠 needsProxy（= !!DriveFileID）
+        // 才知道要去跟後端要 base64 圖片內容；漏掉這個欄位圖片就會是破圖。
+        // 這同時也決定 canGoPrivate，漏掉會讓「調整公開範圍」的選項失效。
+        DriveFileID: file.getId(),
       }, refreshedUser),
       quota: computeQuotaSnapshot_(refreshedUser),
     });
@@ -1852,7 +1963,8 @@ function setupOrMigrate() {
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_VOTES, STORY_VOTES_HEADERS);
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_HONOR_BOARD, HONOR_BOARD_HEADERS);
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_BOOKS, STORY_BOOKS_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_AI_USAGE, AI_USAGE_HEADERS);
+  const aiUsageSheet = ensureSheetWithHeaders_(ss, CONFIG.SHEET_AI_USAGE, AI_USAGE_HEADERS);
+  repairAIUsageDateKeys_(aiUsageSheet);
   const settingsSheet = ensureSheetWithHeaders_(ss, CONFIG.SHEET_SETTINGS, SETTINGS_HEADERS);
 
   // Settings 分頁：只新增缺少的 key，已存在的 key 保留老師原本設定的值
@@ -1900,4 +2012,58 @@ function setupOrMigrate() {
 
   Logger.log("✅ setupOrMigrate 完成：所有分頁與欄位已確保存在，Status 下拉選單清單已更新，舊資料未被刪除或覆蓋。");
   return { success: true };
+}
+
+/* =========================================================================
+   老師用的小工具：一次把所有既有帳號的每日額度改成新的數字
+   -------------------------------------------------------------------------
+   為什麼需要這個？
+   DEFAULT_SETTINGS.AI_DEFAULT_QUOTA_LIMIT 只會用在「新申請的帳號」，
+   已經在 AuthorizedUsers 分頁裡的舊帳號，QuotaLimit 欄位還是當初寫進去的舊數字（例如 5）。
+   把預設值改成 30 之後，要讓現有學生也變成 30，請在 Apps Script 編輯器裡
+   選擇下面這個函式並按「執行」一次即可（可重複執行，不會弄壞任何資料）。
+
+   想給某幾個學生不同的額度？直接在 AuthorizedUsers 分頁手動改那幾列的
+   QuotaLimit 就好，不用跑這個函式；跑了這個函式會把所有人一律覆蓋成同一個數字。
+   ========================================================================= */
+function setAllUsersQuotaLimit() {
+  const NEW_LIMIT = DEFAULT_SETTINGS.AI_DEFAULT_QUOTA_LIMIT; // 想改成別的數字就直接寫在這裡，例如 20
+
+  const sheet = getSheet_(CONFIG.SHEET_USERS);
+  const rows = rowsWithLineNumbers_(sheet);
+  let changed = 0;
+
+  rows.forEach(({ rowNum, obj: row }) => {
+    if (Number(row.QuotaLimit) === Number(NEW_LIMIT)) return;
+    updateObjectRow_(sheet, rowNum, { QuotaLimit: NEW_LIMIT });
+    changed++;
+  });
+
+  invalidateCache_(CONFIG.SHEET_USERS);
+  const msg = "✅ 已把 " + changed + " 個帳號的每日額度改成 " + NEW_LIMIT + " 次（共 " + rows.length + " 個帳號）。";
+  Logger.log(msg);
+  return { success: true, changed: changed, total: rows.length, limit: NEW_LIMIT };
+}
+
+/* =========================================================================
+   老師用的小工具：把所有帳號的重置時間統一成每天 23:59:59
+   （ResetHour = 23，配合 getQuotaDateKey_ 裡固定的 59 分 59 秒）
+   ========================================================================= */
+function setAllUsersResetHour() {
+  const NEW_RESET_HOUR = DEFAULT_SETTINGS.AI_DEFAULT_RESET_HOUR; // 預設 23 → 每天 23:59:59 重置
+
+  const sheet = getSheet_(CONFIG.SHEET_USERS);
+  const rows = rowsWithLineNumbers_(sheet);
+  let changed = 0;
+
+  rows.forEach(({ rowNum, obj: row }) => {
+    if (Number(row.ResetHour) === Number(NEW_RESET_HOUR)) return;
+    updateObjectRow_(sheet, rowNum, { ResetHour: NEW_RESET_HOUR });
+    changed++;
+  });
+
+  invalidateCache_(CONFIG.SHEET_USERS);
+  const msg = "✅ 已把 " + changed + " 個帳號的重置時間改成每天 " + NEW_RESET_HOUR + ":59:59（共 " + rows.length + " 個帳號）。";
+  Logger.log(msg);
+  return { success: true, changed: changed, total: rows.length, resetHour: NEW_RESET_HOUR };
 }

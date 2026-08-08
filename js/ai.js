@@ -6,36 +6,62 @@ document.addEventListener("DOMContentLoaded", () => {
   Auth.requireActive(gateEl, (user) => initAiPage(gateEl, user));
 });
 
-/* 三種畫面類型，各自有一組更貼切的引導欄位（A+B 組合：類型切換 + 全部選填 + 範例按鈕） */
+/* ===================================================================
+   三種畫面類型
+   - character（角色）：會顯示「描述一下角色吧！」，欄位為 動作 / 在哪 / 風格 / 光線氛圍
+   - scenery（場景）：不需要角色設定，純粹描述畫面
+   - free（自由創作）：一個大框自己寫
+   每個欄位的 promptLabel 就是最後組進 Prompt 時前面的標籤，
+   想改 Prompt 的寫法只要改這裡即可，不必動下面的程式。
+   =================================================================== */
 const AI_TYPE_CONFIGS = {
   character: {
-    label: "🧑‍🎨 角色故事",
+    label: "🧑‍🎨 角色",
+    needsCharacter: true,
     fields: [
-      { key: "subject", label: "主體 / 動作", placeholder: "例如：在公園裡追蝴蝶",
-        examples: ["在公園裡追蝴蝶", "坐在窗邊看書", "在雨中撐傘微笑", "跟朋友一起放風箏", "在廚房裡烤餅乾"] },
-      { key: "setting", label: "場景", placeholder: "例如：櫻花盛開的公園，午後陽光",
-        examples: ["櫻花盛開的公園", "熱鬧的夜市", "安靜的圖書館一角", "教室的窗邊", "遊樂園摩天輪旁"] },
-      { key: "style", label: "風格", placeholder: "例如：水彩插畫風、色彩柔和",
-        examples: ["水彩插畫風、色彩柔和", "日系動漫風", "黏土風、可愛立體", "兒童繪本插畫風", "像素風、復古遊戲感"] },
-      { key: "mood", label: "光線 / 氛圍（選填）", placeholder: "例如：溫暖的黃昏光線",
-        examples: ["溫暖的黃昏光線", "清晨的柔和光線", "夜晚燈籠的暖黃光", "陰天的柔和散射光"] },
+      {
+        key: "action", label: "動作", promptLabel: "動作", placeholder: "例如：在公園裡追蝴蝶",
+        examples: ["在公園裡追蝴蝶", "坐在窗邊看書", "在雨中撐傘微笑", "跟朋友一起放風箏", "在廚房裡烤餅乾", "騎著腳踏車往前衝", "抱著一本很大的書打瞌睡"],
+      },
+      {
+        key: "where", label: "在哪", promptLabel: "場景", placeholder: "例如：櫻花盛開的公園，午後陽光",
+        examples: ["櫻花盛開的公園", "熱鬧的夜市", "安靜的圖書館一角", "教室的窗邊", "遊樂園摩天輪旁", "海邊的木棧道", "下著小雨的老街"],
+      },
+      {
+        key: "style", label: "風格", promptLabel: "風格", placeholder: "例如：水彩插畫風、色彩柔和",
+        examples: ["水彩插畫風、色彩柔和", "日系動漫風", "黏土風、可愛立體", "兒童繪本插畫風", "像素風、復古遊戲感", "蠟筆塗鴉風"],
+      },
+      {
+        key: "mood", label: "光線 / 氛圍（選填）", promptLabel: "光線／氛圍", placeholder: "例如：溫暖的黃昏光線",
+        examples: ["溫暖的黃昏光線", "清晨的柔和光線", "夜晚燈籠的暖黃光", "陰天的柔和散射光", "窗邊灑進來的斜射陽光"],
+      },
     ],
   },
   scenery: {
-    label: "🏞️ 場景風景",
+    label: "🏞️ 場景",
+    needsCharacter: false,
     fields: [
-      { key: "subject", label: "畫面主題", placeholder: "例如：夕陽下的海邊",
-        examples: ["夕陽下的海邊", "雪山下的小木屋", "秋天的楓葉林", "雨後的城市街道", "銀河下的草原"] },
-      { key: "setting", label: "場景細節", placeholder: "例如：礁石、海浪、遠方帆船",
-        examples: ["礁石、海浪、遠方帆船", "石板路、老式路燈、磚牆", "梯田、水牛、遠山", "高樓、霓虹燈招牌、車流"] },
-      { key: "style", label: "風格", placeholder: "例如：油畫風、寫實",
-        examples: ["油畫風、寫實", "水彩風、清新", "吉卜力風格", "賽博龐克風、霓虹色調", "極簡插畫風"] },
-      { key: "mood", label: "光線 / 氛圍（選填）", placeholder: "例如：金色夕陽",
-        examples: ["金色夕陽", "藍紫色的黃昏", "薄霧繚繞的清晨", "星空下的深藍夜色"] },
+      {
+        key: "subject", label: "畫面主題", promptLabel: "", placeholder: "例如：夕陽下的海邊",
+        examples: ["夕陽下的海邊", "雪山下的小木屋", "秋天的楓葉林", "雨後的城市街道", "銀河下的草原", "清晨的稻田"],
+      },
+      {
+        key: "setting", label: "場景細節", promptLabel: "場景", placeholder: "例如：礁石、海浪、遠方帆船",
+        examples: ["礁石、海浪、遠方帆船", "石板路、老式路燈、磚牆", "梯田、水牛、遠山", "高樓、霓虹燈招牌、車流", "木橋、溪流、落葉"],
+      },
+      {
+        key: "style", label: "風格", promptLabel: "風格", placeholder: "例如：油畫風、寫實",
+        examples: ["油畫風、寫實", "水彩風、清新", "吉卜力風格", "賽博龐克風、霓虹色調", "極簡插畫風"],
+      },
+      {
+        key: "mood", label: "光線 / 氛圍（選填）", promptLabel: "光線／氛圍", placeholder: "例如：金色夕陽",
+        examples: ["金色夕陽", "藍紫色的黃昏", "薄霧繚繞的清晨", "星空下的深藍夜色"],
+      },
     ],
   },
   free: {
     label: "✨ 自由創作",
+    needsCharacter: false,
     freeform: true,
     hints: [
       "主體：畫面裡的重點是什麼？",
@@ -47,6 +73,45 @@ const AI_TYPE_CONFIGS = {
   },
 };
 
+/* 歷史 Prompt（存在這台裝置的瀏覽器，依帳號分開存） */
+const PROMPT_HISTORY_MAX = 20;
+
+function promptHistoryKey(user) {
+  return "ai_prompt_history_v1_" + (user && user.userId ? user.userId : "guest");
+}
+
+function loadPromptHistory(user) {
+  try {
+    const raw = localStorage.getItem(promptHistoryKey(user));
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string" && x.trim()) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePromptToHistory(user, prompt) {
+  const text = String(prompt || "").trim();
+  if (!text) return loadPromptHistory(user);
+  const list = loadPromptHistory(user).filter((p) => p !== text);
+  list.unshift(text);
+  const trimmed = list.slice(0, PROMPT_HISTORY_MAX);
+  try {
+    localStorage.setItem(promptHistoryKey(user), JSON.stringify(trimmed));
+  } catch (e) {
+    /* localStorage 滿了或無痕模式限制時就放棄記錄，不影響產圖 */
+  }
+  return trimmed;
+}
+
+/** 把重置時間顯示成「2026/8/7 23:59:59」這種格式（固定顯示到秒） */
+function formatResetTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso || "");
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}:59`;
+}
+
 function initAiPage(root, user) {
   root.innerHTML = `
     <div class="page-hero-row">
@@ -57,42 +122,40 @@ function initAiPage(root, user) {
 
     <div id="quota-banner" class="steps-note"></div>
 
-    <div class="steps-note" style="margin-top:16px;">
-      <h3>🧑‍🎨 我的角色設定（選填，畫風景就不用填）</h3>
-      <div class="form-row">
-        <textarea id="character-sheet-input" maxlength="800" rows="3" placeholder="例如：一隻橘色短毛貓，戴紅色圍巾，大大的圓眼睛，圓滾滾的身材"></textarea>
-        <div class="form-hint">如果這次是要畫「同一個角色」的故事，這段描述會自動加在每次生成的 Prompt 最前面，幫助角色在不同頁面盡量長得一樣。純風景/場景可以留空。</div>
-      </div>
-      <div class="btn-row">
-        <button type="button" class="btn btn-outline-dark" id="save-character-btn">💾 儲存角色設定</button>
-        <span class="form-msg-inline" id="character-save-msg"></span>
-      </div>
-    </div>
-
     <form class="submit-form" id="ai-form" style="margin-top:20px;">
       <h3 style="font-family:var(--font-hand);">✏️ 這一頁的畫面內容</h3>
       <div class="btn-row" id="ai-type-tabs"></div>
-      <div id="ai-type-fields" style="margin-top:12px;"></div>
 
-      <div class="form-row">
-        <label>參考圖（選填，讓這次生成盡量貼近某張圖的角色/風格長相）</label>
-        <div class="btn-row" id="reference-mode-tabs">
-          <button type="button" class="btn btn-outline-dark reference-mode-btn active" data-mode="none">不使用參考圖</button>
-          <button type="button" class="btn btn-outline-dark reference-mode-btn" data-mode="pick">從我的作品選一張</button>
-          <button type="button" class="btn btn-outline-dark reference-mode-btn" data-mode="upload">上傳新的參考圖</button>
+      <div class="steps-note" id="character-block" style="margin-top:16px;">
+        <h3>🧑‍🎨 描述一下角色吧！</h3>
+        <div class="form-row">
+          <textarea id="character-sheet-input" maxlength="800" rows="3" placeholder="例如：一隻橘色短毛貓，戴紅色圍巾，大大的圓眼睛，圓滾滾的身材"></textarea>
+          <div class="form-hint">這段描述會自動加在每次生成的 Prompt 最前面，幫助同一個角色在不同頁面盡量長得一樣。按下儲存後，下次進來還會在。</div>
         </div>
-        <div id="reference-pick-row" style="display:none;margin-top:10px;">
-          <div id="reference-picker"><p style="color:#8a7d68;">載入我的作品中...</p></div>
-        </div>
-        <div id="reference-upload-row" style="display:none;margin-top:10px;">
-          <input type="file" id="reference-file-input" accept="image/*">
-          <div class="form-hint">這張參考圖只會用在這一次生成，不會另外存成一件作品。</div>
-          <img id="reference-upload-preview" class="image-preview" alt="參考圖預覽" style="display:none;">
+        <div class="btn-row">
+          <button type="button" class="btn btn-outline-dark" id="save-character-btn">💾 儲存角色設定</button>
+          <span class="form-msg-inline" id="character-save-msg"></span>
         </div>
       </div>
 
+      <div id="ai-type-fields" style="margin-top:12px;"></div>
+
       <div class="form-row">
-        <label>組合出的完整 Prompt（送出前可以再手動微調）</label>
+        <label for="reference-file-input">參考圖（選填，讓這次生成盡量貼近某張圖的角色/風格長相）</label>
+        <input type="file" id="reference-file-input" accept="image/*">
+        <div class="form-hint">沒有選擇檔案就是不使用參考圖。這張參考圖只會用在這一次生成，不會另外存成一件作品。</div>
+        <img id="reference-upload-preview" class="image-preview" alt="參考圖預覽" style="display:none;">
+        <button type="button" class="btn btn-outline-dark" id="reference-clear-btn" style="display:none;margin-top:8px;align-self:flex-start;">✕ 不使用這張參考圖</button>
+      </div>
+
+      <div class="form-row">
+        <label for="final-prompt-preview">組合出的完整 Prompt（送出前可以再手動微調）</label>
+        <div class="prompt-history-row" id="prompt-history-row" style="display:none;">
+          <select id="prompt-history-select" aria-label="用過的 Prompt">
+            <option value="">📜 用過的 Prompt（選一個直接填入）</option>
+          </select>
+          <button type="button" class="btn btn-outline-dark" id="prompt-history-clear-btn">清空紀錄</button>
+        </div>
         <textarea id="final-prompt-preview" rows="3"></textarea>
       </div>
 
@@ -107,12 +170,12 @@ function initAiPage(root, user) {
   let currentType = "character";
   let fieldValues = {}; // { [typeKey]: { [fieldKey]: value } }
   let freeformValue = "";
-  let referenceMode = "none";
-  let selectedReferenceId = "";
   let uploadedReference = null; // { base64, mimeType }
-  let myArtworks = [];
+  let latestQuota = null; // 最近一次從後端拿到的額度快照
+  let myArtworkCount = null; // 這個帳號目前有幾件作品（達上限就不給產圖）
 
   const quotaBanner = document.getElementById("quota-banner");
+  const characterBlock = document.getElementById("character-block");
   const characterInput = document.getElementById("character-sheet-input");
   const saveCharacterBtn = document.getElementById("save-character-btn");
   const characterSaveMsg = document.getElementById("character-save-msg");
@@ -120,11 +183,12 @@ function initAiPage(root, user) {
   const typeTabsEl = document.getElementById("ai-type-tabs");
   const typeFieldsEl = document.getElementById("ai-type-fields");
   const previewInput = document.getElementById("final-prompt-preview");
-  const referencePickRow = document.getElementById("reference-pick-row");
-  const referenceUploadRow = document.getElementById("reference-upload-row");
-  const referencePicker = document.getElementById("reference-picker");
+  const historyRow = document.getElementById("prompt-history-row");
+  const historySelect = document.getElementById("prompt-history-select");
+  const historyClearBtn = document.getElementById("prompt-history-clear-btn");
   const referenceFileInput = document.getElementById("reference-file-input");
   const referenceUploadPreview = document.getElementById("reference-upload-preview");
+  const referenceClearBtn = document.getElementById("reference-clear-btn");
   const generateBtn = document.getElementById("ai-generate-btn");
   const msgEl = document.getElementById("ai-msg");
   const resultEl = document.getElementById("ai-result");
@@ -139,10 +203,16 @@ function initAiPage(root, user) {
     btn.addEventListener("click", () => {
       currentType = btn.dataset.type;
       typeTabsEl.querySelectorAll(".ai-type-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      syncCharacterBlock();
       renderTypeFields();
       composePrompt();
     });
   });
+
+  /** 只有「角色」模式才顯示角色設定區塊 */
+  function syncCharacterBlock() {
+    characterBlock.style.display = AI_TYPE_CONFIGS[currentType].needsCharacter ? "" : "none";
+  }
 
   function renderTypeFields() {
     const config = AI_TYPE_CONFIGS[currentType];
@@ -200,11 +270,15 @@ function initAiPage(root, user) {
     });
   }
 
+  /** 依目前類型把各欄位組成完整 Prompt（角色設定只在「角色」模式加進去） */
   function composePrompt() {
     const parts = [];
-    if (characterInput.value.trim()) parts.push(characterInput.value.trim());
-
     const config = AI_TYPE_CONFIGS[currentType];
+
+    if (config.needsCharacter && characterInput.value.trim()) {
+      parts.push(characterInput.value.trim());
+    }
+
     if (config.freeform) {
       if (freeformValue.trim()) parts.push(freeformValue.trim());
     } else {
@@ -212,14 +286,13 @@ function initAiPage(root, user) {
       config.fields.forEach((f) => {
         const v = (values[f.key] || "").trim();
         if (!v) return;
-        if (f.key === "setting") parts.push("場景：" + v);
-        else if (f.key === "style") parts.push("風格：" + v);
-        else parts.push(v);
+        parts.push(f.promptLabel ? f.promptLabel + "：" + v : v);
       });
     }
     previewInput.value = parts.join("，");
   }
   characterInput.addEventListener("input", composePrompt);
+  syncCharacterBlock();
   renderTypeFields();
   composePrompt();
 
@@ -237,19 +310,58 @@ function initAiPage(root, user) {
     }
   });
 
-  /* ---------------- 參考圖：不使用 / 從我的作品選 / 上傳新的 ---------------- */
-  document.querySelectorAll(".reference-mode-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      referenceMode = btn.dataset.mode;
-      document.querySelectorAll(".reference-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      referencePickRow.style.display = referenceMode === "pick" ? "block" : "none";
-      referenceUploadRow.style.display = referenceMode === "upload" ? "block" : "none";
-    });
+  /* ---------------- 歷史 Prompt 下拉選單 ---------------- */
+  function renderPromptHistory() {
+    const list = loadPromptHistory(user);
+    if (!list.length) {
+      historyRow.style.display = "none";
+      return;
+    }
+    historyRow.style.display = "flex";
+    historySelect.innerHTML =
+      `<option value="">📜 用過的 Prompt（選一個直接填入）</option>` +
+      list
+        .map((p, i) => {
+          const short = p.length > 46 ? p.slice(0, 46) + "…" : p;
+          return `<option value="${i}">${escapeHtml(short)}</option>`;
+        })
+        .join("");
+    historySelect.value = "";
+  }
+
+  historySelect.addEventListener("change", () => {
+    const idx = Number(historySelect.value);
+    if (historySelect.value === "" || !isFinite(idx)) return;
+    const list = loadPromptHistory(user);
+    if (!list[idx]) return;
+    previewInput.value = list[idx];
+    previewInput.focus();
+    historySelect.value = "";
   });
+
+  historyClearBtn.addEventListener("click", () => {
+    if (!confirm("要清空這台裝置上記錄的 Prompt 嗎？（不會影響已經產生的作品）")) return;
+    try { localStorage.removeItem(promptHistoryKey(user)); } catch (e) { /* 忽略 */ }
+    renderPromptHistory();
+  });
+
+  renderPromptHistory();
+
+  /* ---------------- 參考圖：只保留上傳，沒上傳就是不使用 ---------------- */
+  function clearReference() {
+    uploadedReference = null;
+    referenceFileInput.value = "";
+    referenceUploadPreview.style.display = "none";
+    referenceUploadPreview.removeAttribute("src");
+    referenceClearBtn.style.display = "none";
+  }
+
+  referenceClearBtn.addEventListener("click", clearReference);
 
   referenceFileInput.addEventListener("change", async () => {
     uploadedReference = null;
     referenceUploadPreview.style.display = "none";
+    referenceClearBtn.style.display = "none";
     const file = referenceFileInput.files[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { alert("請選擇圖片檔案"); referenceFileInput.value = ""; return; }
@@ -257,68 +369,59 @@ function initAiPage(root, user) {
       uploadedReference = await compressImageFile(file, 1200, 0.85);
       referenceUploadPreview.src = "data:" + uploadedReference.mimeType + ";base64," + uploadedReference.base64;
       referenceUploadPreview.style.display = "block";
+      referenceClearBtn.style.display = "inline-block";
     } catch (err) {
       alert("圖片處理失敗：" + err.message);
-      referenceFileInput.value = "";
+      clearReference();
     }
   });
 
-  function renderReferencePicker() {
-    const withImages = myArtworks.filter((a) => a.isMine);
-    if (!withImages.length) {
-      referencePicker.innerHTML = `<p style="color:#8a7d68;">你還沒有作品可以當參考圖，先產生或投稿一張之後就可以選了。</p>`;
-      return;
-    }
-    referencePicker.innerHTML = `
-      <div class="my-story-pool">
-        ${withImages
-          .map(
-            (a) => `
-          <div class="my-story-pool-item reference-option ${selectedReferenceId === a.ID ? "selected" : ""}" data-ref-id="${escapeHtml(a.ID)}">
-            <img alt="${escapeHtml(a.DisplayName)}" loading="lazy">
-            <div class="pool-item-name">${escapeHtml(a.DisplayName)}</div>
-          </div>
-        `
-          )
-          .join("")}
-      </div>
-    `;
-    referencePicker.querySelectorAll(".reference-option").forEach((el) => {
-      const art = withImages.find((a) => a.ID === el.dataset.refId);
-      if (art) Api.setImageSrc(el.querySelector("img"), art);
-      el.addEventListener("click", () => {
-        selectedReferenceId = el.dataset.refId;
-        referencePicker.querySelectorAll(".reference-option").forEach((o) => o.classList.toggle("selected", o === el));
-      });
-    });
+  /* ---------------- 額度 ---------------- */
+  function remainingCount() {
+    if (!latestQuota) return null;
+    const limit = Number(latestQuota.quotaLimit);
+    if (!isFinite(limit) || limit <= 0) return null; // 0 或無效值代表不限制
+    return Math.max(0, limit - Number(latestQuota.usedCount || 0));
   }
 
-  async function loadMyArtworksForReference() {
-    try {
-      const res = await Api.listMine();
-      myArtworks = res.artworks || [];
-      renderReferencePicker();
-    } catch (err) {
-      referencePicker.innerHTML = `<p style="color:#a8402f;">載入失敗：${escapeHtml(err.message)}</p>`;
+  /** 產生按鈕的文字與可否點擊：括號裡永遠顯示還剩幾次 */
+  function syncGenerateBtn() {
+    if (generating) return;
+    const left = remainingCount();
+    if (left === null) {
+      generateBtn.disabled = false;
+      generateBtn.textContent = "✨ 產生圖片";
+      return;
     }
+    if (left <= 0) {
+      generateBtn.disabled = true;
+      generateBtn.textContent = "今日額度已用完（剩下 0 次）";
+      return;
+    }
+    generateBtn.disabled = false;
+    generateBtn.textContent = `✨ 產生圖片（剩下 ${left} 次）`;
   }
 
   function renderQuota(quota) {
-    const used = quota.usedCount;
-    const limit = quota.quotaLimit;
+    latestQuota = quota;
+    const used = Number(quota.usedCount || 0);
+    const limit = Number(quota.quotaLimit);
     const pct = limit > 0 ? used / limit : 0;
-    const nextReset = new Date(quota.nextResetIso).toLocaleString("zh-TW");
+    const nextReset = formatResetTime(quota.nextResetIso);
     let warning = "";
     if (limit > 0 && pct >= 0.7 && used < limit) {
       warning = `<p style="color:#a8402f;font-weight:600;margin-top:8px;">你已使用超過今日額度的 70%。請好好打字，系統性、有條理地告訴 AI 你的想法，先想清楚再產生圖片喔！</p>`;
     }
+    const countInfo = myArtworkCount === null
+      ? ""
+      : `<p style="margin-top:6px;">目前作品數：<b>${myArtworkCount} / ${CONFIG.MAX_ARTWORKS_PER_USER}</b> 件</p>`;
     quotaBanner.innerHTML = `
       <h3>📊 今日額度</h3>
       <p>今日已用 <b>${used} / ${limit}</b> 次，下次重置時間：${escapeHtml(nextReset)}</p>
+      ${countInfo}
       ${warning}
     `;
-    generateBtn.disabled = limit > 0 && used >= limit;
-    generateBtn.textContent = generateBtn.disabled ? "今日額度已用完" : "✨ 產生圖片";
+    syncGenerateBtn();
   }
 
   async function loadQuota() {
@@ -330,11 +433,25 @@ function initAiPage(root, user) {
     }
   }
 
+  /** 讀取這個帳號目前的作品數量（產圖前的張數上限檢查用） */
+  async function loadMyArtworkCount() {
+    try {
+      const res = await Api.listMine();
+      myArtworkCount = (res.artworks || []).length;
+      if (latestQuota) renderQuota(latestQuota);
+      return myArtworkCount;
+    } catch (err) {
+      myArtworkCount = null;
+      return null;
+    }
+  }
+
   function showMsg(type, text) {
     msgEl.className = "form-msg show " + type;
     msgEl.textContent = text;
   }
 
+  /* ---------------- 送出產圖 ---------------- */
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (generating) return;
@@ -344,29 +461,44 @@ function initAiPage(root, user) {
       showMsg("error", "Prompt 是空的，請至少填寫一項畫面內容。");
       return;
     }
-    if (referenceMode === "upload" && !uploadedReference) {
-      showMsg("error", "請選擇要上傳的參考圖片，或改選其他參考圖模式。");
-      return;
-    }
 
     generating = true;
     generateBtn.disabled = true;
+    generateBtn.textContent = "檢查作品數量中...";
+
+    // 產圖前先確認作品數：達到上限就不送出，請使用者先去「我的頁面」刪掉一些
+    const count = await loadMyArtworkCount();
+    if (count !== null && count >= CONFIG.MAX_ARTWORKS_PER_USER) {
+      generating = false;
+      syncGenerateBtn();
+      alert("請先刪除一些作品再來產圖吧！");
+      showMsg("error", `你目前已經有 ${count} 件作品（上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 件），請先刪除一些作品再來產圖吧！`);
+      return;
+    }
+
     generateBtn.textContent = "產生中，請稍候（約 10~30 秒）...";
     showMsg("pending", "AI 正在畫畫，請稍候...");
     resultEl.innerHTML = "";
 
     try {
       const options = {};
-      if (referenceMode === "upload" && uploadedReference) {
+      if (uploadedReference) {
         options.referenceImageBase64 = uploadedReference.base64;
         options.referenceImageMimeType = uploadedReference.mimeType;
-      } else if (referenceMode === "pick" && selectedReferenceId) {
-        options.referenceArtworkId = selectedReferenceId;
       }
 
       const res = await Api.aiGenerate(finalPrompt, options);
-      showMsg("success", "🎉 圖片產生成功！已存為「私人」作品，可以到「我要投稿」頁面調整公開狀態。（提醒：私人的 AI 產圖如果一直沒有調整公開範圍，超過一段時間可能會被系統清理，記得要保留的話請到「我要投稿」設為公開或僅畫廊）");
       const art = res.artwork;
+
+      showMsg("success", "🎉 圖片產生成功！已存為「私人」作品，可以到「我的頁面」調整公開狀態。（提醒：私人的 AI 產圖如果一直沒有調整公開範圍，超過一段時間可能會被系統清理，記得要保留的話請到「我的頁面」設為公開或僅畫廊）");
+
+      // 記住這次的 Prompt，之後可以從下拉選單直接選回來
+      savePromptToHistory(user, finalPrompt);
+      renderPromptHistory();
+
+      renderQuota(res.quota);
+
+      // 頁面上留一張小卡，同時彈出「調整圖片」視窗（可下載 PNG、看完整 Prompt）
       resultEl.innerHTML = `
         <div class="note-card" style="max-width:340px;margin:0 auto;">
           <div class="note-thumb-wrap"><img alt="AI 產生的圖片"></div>
@@ -374,22 +506,171 @@ function initAiPage(root, user) {
         </div>
       `;
       Api.setImageSrc(resultEl.querySelector("img"), art);
-      renderQuota(res.quota);
+      openAiResultModal(art, finalPrompt);
+
+      if (myArtworkCount !== null) {
+        myArtworkCount += 1;
+        renderQuota(res.quota);
+      }
+
       fieldValues[currentType] = {};
       freeformValue = "";
       renderTypeFields();
       composePrompt();
-      loadMyArtworksForReference(); // 讓剛產生的這張也能被之後選為參考圖
+      clearReference();
     } catch (err) {
       showMsg("error", "產生失敗：" + err.message);
-      loadQuota();
     } finally {
       generating = false;
-      generateBtn.disabled = false;
+      syncGenerateBtn();
       loadQuota();
     }
   });
 
   loadQuota();
-  loadMyArtworksForReference();
+  loadMyArtworkCount();
+}
+
+/* ===================================================================
+   產生結果視窗：圖片 + 下載 PNG + 這次使用的完整 Prompt
+   =================================================================== */
+function ensureAiResultModal() {
+  let overlay = document.getElementById("ai-result-modal");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "ai-result-modal";
+  overlay.className = "modal-overlay ai-result-modal";
+  overlay.innerHTML = `
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="ai-result-title">
+      <button class="modal-close" aria-label="關閉">✕</button>
+      <h2 class="modal-title" id="ai-result-title" style="margin-bottom:14px;">🎨 你的圖完成了！</h2>
+
+      <div class="ai-result-img-frame">
+        <img id="ai-result-img" alt="AI 產生的圖片">
+      </div>
+
+      <div class="btn-row" style="margin-top:14px;justify-content:center;">
+        <button type="button" class="btn btn-pin" id="ai-result-download-btn">⬇️ 下載 PNG</button>
+        <button type="button" class="btn btn-outline-dark" id="ai-result-copy-btn">📋 複製 Prompt</button>
+      </div>
+      <div class="form-msg" id="ai-result-msg"></div>
+
+      <div class="form-row" style="margin-top:16px;">
+        <label for="ai-result-prompt">這次使用的完整 Prompt</label>
+        <textarea class="ai-result-prompt" id="ai-result-prompt" rows="5" readonly></textarea>
+      </div>
+
+      <p style="color:#6b5f4c;font-size:0.88rem;margin:6px 0 0;">
+        這張圖已經自動存成你的「私人」作品，可以到「我的頁面」調整公開範圍。
+      </p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.classList.remove("open");
+  overlay.querySelector(".modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && overlay.classList.contains("open")) close();
+  });
+
+  return overlay;
+}
+
+async function openAiResultModal(art, prompt) {
+  const overlay = ensureAiResultModal();
+  const img = overlay.querySelector("#ai-result-img");
+  const promptBox = overlay.querySelector("#ai-result-prompt");
+  const downloadBtn = overlay.querySelector("#ai-result-download-btn");
+  const copyBtn = overlay.querySelector("#ai-result-copy-btn");
+  const msgEl = overlay.querySelector("#ai-result-msg");
+
+  promptBox.value = prompt || "";
+  msgEl.className = "form-msg";
+  msgEl.textContent = "";
+  img.removeAttribute("src");
+  overlay.classList.add("open");
+
+  // 私人作品沒有公開網址，要先跟後端換回 base64 內容
+  let dataUrl = "";
+  try {
+    dataUrl = art.ImageURL || (await Api.fetchPrivateImageDataUrl(art.ID));
+    img.src = dataUrl;
+  } catch (err) {
+    msgEl.className = "form-msg show error";
+    msgEl.textContent = "圖片載入失敗：" + err.message;
+  }
+
+  downloadBtn.onclick = async () => {
+    downloadBtn.disabled = true;
+    const original = downloadBtn.textContent;
+    downloadBtn.textContent = "準備下載中...";
+    try {
+      if (!dataUrl) dataUrl = await Api.fetchPrivateImageDataUrl(art.ID);
+      const stamp = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const name = `AI作品_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}.png`;
+      await downloadDataUrlAsPng(dataUrl, name);
+      msgEl.className = "form-msg show success";
+      msgEl.textContent = "✅ 已下載：" + name;
+    } catch (err) {
+      msgEl.className = "form-msg show error";
+      msgEl.textContent = "下載失敗：" + err.message;
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = original;
+    }
+  };
+
+  copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(promptBox.value);
+      msgEl.className = "form-msg show success";
+      msgEl.textContent = "✅ Prompt 已複製";
+    } catch (err) {
+      // 沒有剪貼簿權限（例如非 https）時退回選取全部，讓使用者自己按 Ctrl+C
+      promptBox.removeAttribute("readonly");
+      promptBox.select();
+      promptBox.setAttribute("readonly", "readonly");
+      msgEl.className = "form-msg show pending";
+      msgEl.textContent = "已幫你選取，請按 Ctrl+C（Mac 是 ⌘+C）複製。";
+    }
+  };
+}
+
+/** 把 data: URI 轉成 PNG 檔並觸發下載（來源不是 PNG 時用 canvas 轉一次） */
+function downloadDataUrlAsPng(dataUrl, filename) {
+  return new Promise((resolve, reject) => {
+    const triggerDownload = (href) => {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      resolve();
+    };
+
+    if (dataUrl.startsWith("data:image/png")) {
+      triggerDownload(dataUrl);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+        triggerDownload(canvas.toDataURL("image/png"));
+      } catch (e) {
+        reject(new Error("圖片轉檔失敗"));
+      }
+    };
+    img.onerror = () => reject(new Error("圖片讀取失敗"));
+    img.src = dataUrl;
+  });
 }

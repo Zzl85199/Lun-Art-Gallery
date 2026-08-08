@@ -16,12 +16,11 @@
   <div class="container">
     <a href="index.html" class="brand"><span class="brand-icon">🖍️</span> AI 創作畫廊<small>ㄚ倫老師魔法實驗室</small></a>
     <nav class="nav-tabs">
-      <a class="nav-tab" data-page="home" href="index.html">首頁</a>
+      <a class="nav-tab active" data-page="home" href="index.html">首頁</a>
       <a class="nav-tab" data-page="gallery" href="gallery.html">畫廊</a>
-      <a class="nav-tab" data-page="submit" href="submit.html">我要投稿</a>
-      <a class="nav-tab" data-page="story" href="story.html">故事接龍</a>
-      <a class="nav-tab" data-page="ai" href="ai.html">AI 作圖</a>
-      <a class="nav-tab" data-page="about" href="about.html">關於</a>
+      <a class="nav-tab auth-only" data-page="submit" href="submit.html">我的頁面</a>
+      <a class="nav-tab auth-only" data-page="ai" href="ai.html">AI 作圖</a>
+      <a class="nav-tab auth-only" data-page="story" href="story.html">故事接龍</a>
     </nav>
   </div>
 </header>
@@ -44,7 +43,7 @@
     </p>
     <div class="btn-row" style="justify-content:center;">
       <a href="gallery.html" class="btn btn-pin">前往畫廊看作品 →</a>
-      <a href="submit.html" class="btn btn-chalk">我要投稿作品</a>
+      <a href="submit.html" class="btn btn-chalk auth-only">前往我的頁面</a>
     </div>
   </div>
 </section>
@@ -61,6 +60,49 @@
     <div class="note-grid" id="featured-grid"></div>
     <div style="text-align:center;margin-top:10px;">
       <a href="gallery.html" class="btn btn-outline-dark">看全部作品</a>
+    </div>
+  </div>
+</section>
+
+<section class="blackboard-bg" id="about">
+  <!-- 波浪要放在深色區塊「裡面」，透明的那一半才會露出黑板底色，接縫才不會出現一條淺色帶 -->
+  <svg class="wave-divider wave-flip" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
+  </svg>
+  <div class="container about-wrap" style="padding:30px 0 70px;">
+    <div class="page-hero-row">
+      <span class="page-hero-emoji" aria-hidden="true">💭</span>
+      <h1>關於這個公佈欄</h1>
+      <span class="page-hero-emoji" aria-hidden="true">🎨</span>
+    </div>
+
+    <div class="about-card">
+      <h3>🎯 教學理念</h3>
+      <p>
+        這個網站的目的，不是展示「AI 畫得多漂亮」，而是讓學生練習「怎麼跟 AI 好好溝通」。
+        一張好的作品背後，往往是好幾次修改 Prompt 的過程——加一個形容詞、換一個構圖描述、
+        調整光線或風格關鍵字，畫面就會完全不同。我們希望透過公開展示 Prompt 與創作說明，
+        讓同學互相學習「怎麼把一個想法說清楚」，這也是這個時代很重要的表達能力。
+      </p>
+    </div>
+
+    <div class="about-card">
+      <h3>🏫 參與班級</h3>
+      <p>目前參與這個計畫的班級，會顯示在畫廊頁的班級篩選清單中。歡迎其他班級的老師也加入投稿名單！</p>
+    </div>
+
+    <div class="about-card">
+      <h3>🖍️ 指導老師</h3>
+      <p>本專案由授課老師發起與維護，負責審核投稿與帳號、管理授權名單與每人額度，並在課堂中帶領學生討論 Prompt 撰寫技巧。</p>
+    </div>
+
+    <div class="about-card">
+      <h3>🔧 技術說明</h3>
+      <p>
+        本網站為純靜態網頁，需以 Google 帳號登入才能投稿、票選故事接龍、使用 AI 作圖與建立故事本；
+        畫廊仍可公開瀏覽。資料來源是一份 Google Sheet，透過 Google Apps Script 作為免費後端，
+        圖片直接上傳到 Google Drive（依照公開範圍決定分享權限），完全不需要租用伺服器或資料庫。
+      </p>
     </div>
   </div>
 </section>

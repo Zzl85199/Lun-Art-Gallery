@@ -96,6 +96,9 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   審核。
 - `QuotaLimit` / `ResetHour`：AI 作圖每人每日額度與重置時間（Asia/Taipei 24 小
   時制），可針對個別學生調整。
+  - ⚠️ `AI_DEFAULT_QUOTA_LIMIT` **只會套用在新申請的帳號**。改了預設值之後，既有
+    帳號這一欄還是舊數字，要讓所有人一起改請執行 `setAllUsersQuotaLimit()`；
+    重置時間同理，用 `setAllUsersResetHour()`。
 - `SessionVersion`：正常不需要手動改；老師若想強制某人立即登出（例如帳號被盜
   用），可以把這一列的數字改大（例如 +1），該使用者所有裝置的登入狀態會立刻失
   效，需要重新登入。
@@ -140,8 +143,9 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   | `STORY_BOOK_MAX_PAGES` | 30 | 故事本每本最多頁數 |
   | `STORY_BOOK_CHARS_PER_PAGE` | 200 | 每頁文字上限 |
   | `STORY_BOOK_MAX_ACTIVE` | 3 | 每人同時可建立的故事本數 |
-  | `AI_DEFAULT_QUOTA_LIMIT` | 5 | 新帳號預設每日 AI 作圖額度 |
-  | `AI_DEFAULT_RESET_HOUR` | 0 | 新帳號預設額度重置時間 |
+  | `AI_DEFAULT_QUOTA_LIMIT` | 30 | 新帳號預設每日 AI 作圖額度 |
+  | `AI_DEFAULT_RESET_HOUR` | 23 | 新帳號預設額度重置時間（配合固定的 59 分 59 秒，等於每天 23:59:59 重置） |
+  | `MAX_ARTWORKS_PER_USER` | 94 | 每個帳號最多能擁有幾件作品，達上限就不能再用 AI 作圖產生新圖（前端 `js/config.js` 有同名設定，兩邊要一起改） |
   | `AI_MODEL` | gpt-image-1 | OpenAI 圖片模型 |
   | `AI_SIZE` | 1024x1024 | 圖片尺寸 |
   | `AI_QUALITY` | medium | 圖片品質（gpt-image-1 系列只接受 low/medium/high/auto，不是 dall-e-3 那組 standard/hd） |
@@ -170,6 +174,9 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   - 不需要額外去 Drive 做任何分享設定，圖片本來就顯示得出來（見下方「圖片顯示機
     制」說明）。
 - **調整每人 AI 額度**：`AuthorizedUsers` 分頁改該列的 `QuotaLimit` / `ResetHour`。
+- **一次調整所有人的 AI 額度**：Apps Script 編輯器執行 `setAllUsersQuotaLimit()`
+  （數值取自 `DEFAULT_SETTINGS.AI_DEFAULT_QUOTA_LIMIT`，目前是 30）。重置時間則用
+  `setAllUsersResetHour()`。兩個函式都可以重複執行，不會弄壞既有資料。
 - **手動結算故事接龍**：Apps Script 編輯器函式選單選：
   - `advanceStoryRoundForClass`：先在程式碼上方暫時改成
     `advanceStoryRoundForClass("七年一班")` 這樣直接執行，或用「執行 → 帶參數執
@@ -314,8 +321,16 @@ Apps Script 後端（不再是瀏覽器直接跟 Google 的圖片伺服器要資
       可先改 `STORY_DAILY_ROLLOVER_HOUR` 成快到的時間測試）
 - [ ] 故事本在瀏覽器 A 建立/編輯後，用另一台裝置（或無痕視窗）登入同一帳號，能
       看到相同內容
-- [ ] AI 作圖：額度用到第 4 次（5 次上限時）出現 70% 提醒；用滿 5 次後按鈕停用
-      且後端拒絕
+- [ ] AI 作圖：額度用到 70%（30 次上限時是第 21 次）出現提醒；用滿 30 次後按鈕停
+      用且後端拒絕
+- [ ] AI 作圖：產生按鈕的括號內顯示正確的剩餘次數；重置時間顯示為 23:59:59
+- [ ] AI 作圖：作品數達到 `MAX_ARTWORKS_PER_USER`（94）時，按產生圖片會跳出
+      「請先刪除一些作品再來產圖吧！」且不會送出請求
+- [ ] AI 作圖：產生成功後跳出結果視窗，「下載 PNG」能存到電腦，視窗下方顯示這次
+      用的完整 Prompt
+- [ ] AI 作圖：產生過的 Prompt 會出現在下拉選單，選了會填回完整 Prompt 欄位
+- [ ] 導覽列：未登入只看得到「首頁 / 畫廊」，登入後才出現「我的頁面 / AI 作圖 /
+      故事接龍」
 - [ ] 開兩個分頁同時快速點兩次「產生圖片」（模擬雙擊/多分頁），最多只成功扣一
       次額度、不會超額生成
 - [ ] 刻意讓 OpenAI 呼叫失敗（例如暫時填錯 `OPENAI_API_KEY`），確認失敗後額度

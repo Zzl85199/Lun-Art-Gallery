@@ -10,7 +10,7 @@
  * ===============================================================
  */
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby1jh-fre5VhPIg22l8x9DPoeGfCvTgtFasdUtAJT4Ivtb0RHo5s2UWqJnMsQrFl2FC/exec", // 例如 https://script.google.com/macros/s/xxxxxxxx/exec
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwAX9Y8cUwFcPijc8_OcrMJb9HjHscGlRNoVFY-yMMASzOFxsHOJzvgWt475Z8E_F7f/exec", // 例如 https://script.google.com/macros/s/xxxxxxxx/exec
   // 在 Google Cloud Console →「憑證」建立的 OAuth 用戶端 ID（應用程式類型：網頁應用程式）
   GOOGLE_CLIENT_ID: "539277836651-l7se69fsu9d6l75r55kpbj2lmr7enhoh.apps.googleusercontent.com",
   SITE_TITLE: "AI 創作畫廊",
@@ -19,4 +19,8 @@ const CONFIG = {
   AI_TOOLS: ["Midjourney", "DALL·E", "ChatGPT", "Stable Diffusion", "Adobe Firefly", "其他"],
   // 上傳圖片檔案大小上限（MB），與後端 uploadBase64ToDrive_ 的限制對應
   MAX_UPLOAD_MB: 8,
+  // 每個帳號最多能擁有幾件作品。達到這個數量就不能再用 AI 作圖產生新圖，
+  // 會跳出「請先刪除一些作品再來產圖吧！」的提醒。
+  // ★ 要調整上限就改這裡；後端 Code.gs 的 MAX_ARTWORKS_PER_USER 也要改成同一個數字。
+  MAX_ARTWORKS_PER_USER: 94,
 };

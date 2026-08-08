@@ -1757,3 +1757,79 @@ button {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
+
+/* ===================================================================
+   需要登入才顯示的元素（導覽列分頁、首頁按鈕…）
+   未登入一律隱藏，Auth 登入成功後會在 <body> 加上 .is-logged-in
+   =================================================================== */
+.auth-only { display: none !important; }
+body.is-logged-in .auth-only { display: inline-block !important; }
+
+/* 首頁下方的「關於」區塊：上緣的波浪要上下翻轉才會接得順（由 cork 過渡回黑板色） */
+.wave-flip {
+  transform: rotate(180deg);
+  display: block;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+/* ===================================================================
+   AI 作圖：歷史 Prompt 下拉、產生結果視窗
+   =================================================================== */
+.prompt-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.prompt-history-row select {
+  flex: 1;
+  min-width: 220px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 2px solid #d8cdb4;
+  background: #fffdf6;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.ai-result-modal .modal-box { max-width: 620px; padding: 26px 26px 30px; }
+
+.ai-result-img-frame {
+  background: #12241d;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.ai-result-img-frame img {
+  max-width: 100%;
+  max-height: 58vh;
+  border-radius: 8px;
+  display: block;
+}
+
+.ai-result-prompt {
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px dashed #cbbfa2;
+  background: #fffdf6;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  resize: vertical;
+  font-family: inherit;
+}
+
+@media (max-width: 560px) {
+  .ai-result-modal .modal-box { padding: 22px 16px 26px; }
+}

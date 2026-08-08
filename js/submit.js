@@ -18,7 +18,7 @@ function initSubmitPage(root, user) {
   root.innerHTML = `
     <div class="page-hero-row">
       <span class="page-hero-emoji" aria-hidden="true">✏️</span>
-      <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);text-align:center;">我要投稿</h1>
+      <h1 class="hero-title" style="font-size:clamp(2rem,5vw,3rem);text-align:center;">我的頁面</h1>
       <span class="page-hero-emoji" aria-hidden="true">🌟</span>
     </div>
 
