@@ -451,6 +451,43 @@ function initAiPage(root, user) {
     msgEl.textContent = text;
   }
 
+  /* ---------------- 共用的產圖流程 ---------------- */
+  /**
+   * 主表單的「產生圖片」與結果視窗的「微調後再產生一次」都走這一條，
+   * 確保兩邊的作品數上限檢查、額度更新、Prompt 紀錄行為完全一致。
+   * 回傳後端的回應；檢查沒過或後端出錯都會 throw。
+   */
+  async function generateImage(prompt, options) {
+    // 產圖前先確認作品數：達到上限就不送出，請使用者先去「我的頁面」刪掉一些
+    const count = await loadMyArtworkCount();
+    if (count !== null && count >= CONFIG.MAX_ARTWORKS_PER_USER) {
+      const err = new Error(`你目前已經有 ${count} 件作品（上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 件），請先刪除一些作品再來產圖吧！`);
+      err.isArtworkLimit = true;
+      throw err;
+    }
+
+    const res = await Api.aiGenerate(prompt, options || {});
+
+    // 記住這次的 Prompt，之後可以從下拉選單直接選回來
+    savePromptToHistory(user, prompt);
+    renderPromptHistory();
+
+    if (myArtworkCount !== null) myArtworkCount += 1;
+    renderQuota(res.quota);
+    return res;
+  }
+
+  /** 頁面上那張小小的結果卡片 */
+  function renderResultCard(art) {
+    resultEl.innerHTML = `
+      <div class="note-card" style="max-width:340px;margin:0 auto;">
+        <div class="note-thumb-wrap"><img alt="AI 產生的圖片"></div>
+        <div class="note-footer-row" style="justify-content:center;">🔒 私人（只有你看得到）</div>
+      </div>
+    `;
+    Api.setImageSrc(resultEl.querySelector("img"), art);
+  }
+
   /* ---------------- 送出產圖 ---------------- */
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -465,18 +502,6 @@ function initAiPage(root, user) {
     generating = true;
     generateBtn.disabled = true;
     generateBtn.textContent = "檢查作品數量中...";
-
-    // 產圖前先確認作品數：達到上限就不送出，請使用者先去「我的頁面」刪掉一些
-    const count = await loadMyArtworkCount();
-    if (count !== null && count >= CONFIG.MAX_ARTWORKS_PER_USER) {
-      generating = false;
-      syncGenerateBtn();
-      alert("請先刪除一些作品再來產圖吧！");
-      showMsg("error", `你目前已經有 ${count} 件作品（上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 件），請先刪除一些作品再來產圖吧！`);
-      return;
-    }
-
-    generateBtn.textContent = "產生中，請稍候（約 10~30 秒）...";
     showMsg("pending", "AI 正在畫畫，請稍候...");
     resultEl.innerHTML = "";
 
@@ -487,31 +512,14 @@ function initAiPage(root, user) {
         options.referenceImageMimeType = uploadedReference.mimeType;
       }
 
-      const res = await Api.aiGenerate(finalPrompt, options);
-      const art = res.artwork;
+      generateBtn.textContent = "產生中，請稍候（約 10~30 秒）...";
+      const res = await generateImage(finalPrompt, options);
 
       showMsg("success", "🎉 圖片產生成功！已存為「私人」作品，可以到「我的頁面」調整公開狀態。（提醒：私人的 AI 產圖如果一直沒有調整公開範圍，超過一段時間可能會被系統清理，記得要保留的話請到「我的頁面」設為公開或僅畫廊）");
 
-      // 記住這次的 Prompt，之後可以從下拉選單直接選回來
-      savePromptToHistory(user, finalPrompt);
-      renderPromptHistory();
-
-      renderQuota(res.quota);
-
-      // 頁面上留一張小卡，同時彈出「調整圖片」視窗（可下載 PNG、看完整 Prompt）
-      resultEl.innerHTML = `
-        <div class="note-card" style="max-width:340px;margin:0 auto;">
-          <div class="note-thumb-wrap"><img alt="AI 產生的圖片"></div>
-          <div class="note-footer-row" style="justify-content:center;">🔒 私人（只有你看得到）</div>
-        </div>
-      `;
-      Api.setImageSrc(resultEl.querySelector("img"), art);
-      openAiResultModal(art, finalPrompt);
-
-      if (myArtworkCount !== null) {
-        myArtworkCount += 1;
-        renderQuota(res.quota);
-      }
+      renderResultCard(res.artwork);
+      // 從主表單產生的是「全新的一張」，微調次數重新計算
+      openResultModal(res.artwork, finalPrompt, { resetTweaks: true });
 
       fieldValues[currentType] = {};
       freeformValue = "";
@@ -519,11 +527,159 @@ function initAiPage(root, user) {
       composePrompt();
       clearReference();
     } catch (err) {
-      showMsg("error", "產生失敗：" + err.message);
+      if (err.isArtworkLimit) alert("請先刪除一些作品再來產圖吧！");
+      showMsg("error", err.isArtworkLimit ? err.message : "產生失敗：" + err.message);
     } finally {
       generating = false;
       syncGenerateBtn();
       loadQuota();
+    }
+  });
+
+  /* ===================================================================
+     產生結果視窗：圖片 + 下載 PNG + 可修改 Prompt 再產生一次（微調）
+     =================================================================== */
+  const modal = ensureAiResultModal();
+  const mImg = modal.querySelector("#ai-result-img");
+  const mPrompt = modal.querySelector("#ai-result-prompt");
+  const mDownloadBtn = modal.querySelector("#ai-result-download-btn");
+  const mCopyBtn = modal.querySelector("#ai-result-copy-btn");
+  const mTweakBtn = modal.querySelector("#ai-result-tweak-btn");
+  const mUseRefInput = modal.querySelector("#ai-result-use-reference");
+  const mMsg = modal.querySelector("#ai-result-msg");
+  const mTweakNote = modal.querySelector("#ai-result-tweak-note");
+
+  // 這個視窗目前顯示的那一張圖的狀態
+  let modalArt = null;
+  let modalDataUrl = "";
+  let tweaksLeft = 0;
+  let tweaking = false;
+
+  function modalMsg(type, text) {
+    mMsg.className = type ? "form-msg show " + type : "form-msg";
+    mMsg.textContent = text || "";
+  }
+
+  /** 微調按鈕的文字／可否點擊：同時受「微調次數」與「今日總額度」限制 */
+  function syncTweakBtn() {
+    if (tweaking) return;
+    const dailyLeft = remainingCount();
+
+    if (tweaksLeft <= 0) {
+      mTweakBtn.disabled = true;
+      mTweakBtn.textContent = "微調次數已用完";
+      mTweakNote.textContent = `這張圖的微調次數已經用完了（上限 ${CONFIG.MAX_TWEAKS_PER_IMAGE} 次）。想繼續調整，請關掉這個視窗，回到上面重新產生一張。`;
+      return;
+    }
+    if (dailyLeft !== null && dailyLeft <= 0) {
+      mTweakBtn.disabled = true;
+      mTweakBtn.textContent = "今日額度已用完";
+      mTweakNote.textContent = "今天的 AI 作圖額度已經用完了，明天再來吧！";
+      return;
+    }
+    mTweakBtn.disabled = false;
+    mTweakBtn.textContent = `🪄 微調後再產生一次（剩 ${tweaksLeft} 次）`;
+    mTweakNote.textContent = `改完上面的 Prompt 再按這個按鈕，就會依照新的描述重畫一張。每按一次也會扣掉今日總額度 1 次${
+      dailyLeft === null ? "" : `（今日還剩 ${dailyLeft} 次）`
+    }。`;
+  }
+
+  /** 把視窗內容換成指定的那一張圖 */
+  async function showInModal(art, prompt) {
+    modalArt = art;
+    modalDataUrl = "";
+    mPrompt.value = prompt || "";
+    mImg.removeAttribute("src");
+    mImg.classList.add("img-loading");
+
+    try {
+      modalDataUrl = art.ImageURL || (await Api.fetchPrivateImageDataUrl(art.ID));
+      mImg.src = modalDataUrl;
+    } catch (err) {
+      modalMsg("error", "圖片載入失敗：" + err.message);
+    } finally {
+      mImg.classList.remove("img-loading");
+    }
+  }
+
+  async function openResultModal(art, prompt, opts) {
+    if (opts && opts.resetTweaks) tweaksLeft = CONFIG.MAX_TWEAKS_PER_IMAGE;
+    modalMsg("", "");
+    modal.classList.add("open");
+    syncTweakBtn();
+    await showInModal(art, prompt);
+  }
+
+  mTweakBtn.addEventListener("click", async () => {
+    if (tweaking || generating) return;
+
+    const newPrompt = mPrompt.value.trim();
+    if (!newPrompt) {
+      modalMsg("error", "Prompt 不能是空的，請先寫一點描述再產生。");
+      return;
+    }
+    if (tweaksLeft <= 0) return;
+
+    tweaking = true;
+    generating = true; // 微調期間，主表單的產生按鈕也要一起鎖住
+    generateBtn.disabled = true;
+    mTweakBtn.disabled = true;
+    mTweakBtn.textContent = "重新產生中，請稍候（約 10~30 秒）...";
+    modalMsg("pending", "AI 正在依照新的 Prompt 重畫，請稍候...");
+
+    try {
+      const options = {};
+      // 以目前這張圖當參考圖，讓微調後的結果盡量維持同樣的角色與風格
+      if (mUseRefInput.checked && modalArt && modalArt.ID) {
+        options.referenceArtworkId = modalArt.ID;
+      }
+
+      const res = await generateImage(newPrompt, options);
+
+      tweaksLeft--;
+      await showInModal(res.artwork, newPrompt);
+      renderResultCard(res.artwork);
+      modalMsg("success", `🎉 重新產生完成！${tweaksLeft > 0 ? `這張圖還可以再微調 ${tweaksLeft} 次。` : "微調次數已經用完了。"}`);
+      showMsg("success", "🎉 微調完成！新的圖一樣已存成你的「私人」作品。");
+    } catch (err) {
+      if (err.isArtworkLimit) alert("請先刪除一些作品再來產圖吧！");
+      modalMsg("error", err.isArtworkLimit ? err.message : "產生失敗：" + err.message);
+    } finally {
+      tweaking = false;
+      generating = false;
+      syncTweakBtn();
+      syncGenerateBtn();
+      loadQuota();
+    }
+  });
+
+  mDownloadBtn.addEventListener("click", async () => {
+    mDownloadBtn.disabled = true;
+    const original = mDownloadBtn.textContent;
+    mDownloadBtn.textContent = "準備下載中...";
+    try {
+      if (!modalDataUrl) modalDataUrl = await Api.fetchPrivateImageDataUrl(modalArt.ID);
+      const stamp = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const name = `AI作品_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}.png`;
+      await downloadDataUrlAsPng(modalDataUrl, name);
+      modalMsg("success", "✅ 已下載：" + name);
+    } catch (err) {
+      modalMsg("error", "下載失敗：" + err.message);
+    } finally {
+      mDownloadBtn.disabled = false;
+      mDownloadBtn.textContent = original;
+    }
+  });
+
+  mCopyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(mPrompt.value);
+      modalMsg("success", "✅ Prompt 已複製");
+    } catch (err) {
+      // 沒有剪貼簿權限（例如非 https）時退回選取全部，讓使用者自己按 Ctrl+C
+      mPrompt.select();
+      modalMsg("pending", "已幫你選取，請按 Ctrl+C（Mac 是 ⌘+C）複製。");
     }
   });
 
@@ -556,13 +712,24 @@ function ensureAiResultModal() {
       </div>
       <div class="form-msg" id="ai-result-msg"></div>
 
-      <div class="form-row" style="margin-top:16px;">
-        <label for="ai-result-prompt">這次使用的完整 Prompt</label>
-        <textarea class="ai-result-prompt" id="ai-result-prompt" rows="5" readonly></textarea>
+      <div class="ai-tweak-block">
+        <h3>🪄 想再調整看看？</h3>
+        <div class="form-row">
+          <label for="ai-result-prompt">這次使用的完整 Prompt（可以直接修改，再產生一次）</label>
+          <textarea class="ai-result-prompt" id="ai-result-prompt" rows="5"></textarea>
+        </div>
+
+        <label class="ai-tweak-checkbox">
+          <input type="checkbox" id="ai-result-use-reference" checked>
+          <span>以現在這張圖為基礎（角色和風格會盡量保持一樣，只改你寫的地方）</span>
+        </label>
+
+        <button type="button" class="btn btn-pin" id="ai-result-tweak-btn" style="width:100%;margin-top:12px;">🪄 微調後再產生一次</button>
+        <div class="form-hint" id="ai-result-tweak-note" style="margin-top:8px;"></div>
       </div>
 
-      <p style="color:#6b5f4c;font-size:0.88rem;margin:6px 0 0;">
-        這張圖已經自動存成你的「私人」作品，可以到「我的頁面」調整公開範圍。
+      <p style="color:#6b5f4c;font-size:0.88rem;margin:14px 0 0;">
+        每一張圖都會自動存成你的「私人」作品，可以到「我的頁面」調整公開範圍。
       </p>
     </div>
   `;
@@ -576,67 +743,6 @@ function ensureAiResultModal() {
   });
 
   return overlay;
-}
-
-async function openAiResultModal(art, prompt) {
-  const overlay = ensureAiResultModal();
-  const img = overlay.querySelector("#ai-result-img");
-  const promptBox = overlay.querySelector("#ai-result-prompt");
-  const downloadBtn = overlay.querySelector("#ai-result-download-btn");
-  const copyBtn = overlay.querySelector("#ai-result-copy-btn");
-  const msgEl = overlay.querySelector("#ai-result-msg");
-
-  promptBox.value = prompt || "";
-  msgEl.className = "form-msg";
-  msgEl.textContent = "";
-  img.removeAttribute("src");
-  overlay.classList.add("open");
-
-  // 私人作品沒有公開網址，要先跟後端換回 base64 內容
-  let dataUrl = "";
-  try {
-    dataUrl = art.ImageURL || (await Api.fetchPrivateImageDataUrl(art.ID));
-    img.src = dataUrl;
-  } catch (err) {
-    msgEl.className = "form-msg show error";
-    msgEl.textContent = "圖片載入失敗：" + err.message;
-  }
-
-  downloadBtn.onclick = async () => {
-    downloadBtn.disabled = true;
-    const original = downloadBtn.textContent;
-    downloadBtn.textContent = "準備下載中...";
-    try {
-      if (!dataUrl) dataUrl = await Api.fetchPrivateImageDataUrl(art.ID);
-      const stamp = new Date();
-      const pad = (n) => String(n).padStart(2, "0");
-      const name = `AI作品_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}.png`;
-      await downloadDataUrlAsPng(dataUrl, name);
-      msgEl.className = "form-msg show success";
-      msgEl.textContent = "✅ 已下載：" + name;
-    } catch (err) {
-      msgEl.className = "form-msg show error";
-      msgEl.textContent = "下載失敗：" + err.message;
-    } finally {
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = original;
-    }
-  };
-
-  copyBtn.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(promptBox.value);
-      msgEl.className = "form-msg show success";
-      msgEl.textContent = "✅ Prompt 已複製";
-    } catch (err) {
-      // 沒有剪貼簿權限（例如非 https）時退回選取全部，讓使用者自己按 Ctrl+C
-      promptBox.removeAttribute("readonly");
-      promptBox.select();
-      promptBox.setAttribute("readonly", "readonly");
-      msgEl.className = "form-msg show pending";
-      msgEl.textContent = "已幫你選取，請按 Ctrl+C（Mac 是 ⌘+C）複製。";
-    }
-  };
 }
 
 /** 把 data: URI 轉成 PNG 檔並觸發下載（來源不是 PNG 時用 canvas 轉一次） */

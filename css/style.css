@@ -1797,6 +1797,7 @@ body.is-logged-in .auth-only { display: inline-block !important; }
 }
 
 .ai-result-modal .modal-box { max-width: 620px; padding: 26px 26px 30px; }
+.ai-result-modal .ai-result-img-frame img { max-height: 42vh; }
 
 .ai-result-img-frame {
   background: #12241d;
@@ -1813,6 +1814,38 @@ body.is-logged-in .auth-only { display: inline-block !important; }
   max-height: 58vh;
   border-radius: 8px;
   display: block;
+}
+
+/* 結果視窗裡的「微調」區塊 */
+.ai-tweak-block {
+  margin-top: 18px;
+  padding: 18px 18px 20px;
+  border-radius: 12px;
+  background: #f3ecd9;
+  border: 2px dashed #cbbfa2;
+}
+
+.ai-tweak-block h3 {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+
+.ai-tweak-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ai-tweak-checkbox input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .ai-result-prompt {
