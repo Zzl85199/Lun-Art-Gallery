@@ -960,11 +960,13 @@ function handleSubmitBook_(body) {
   if (!base64Data) throw new Error("請選擇要上傳的 PDF 檔案");
   if (mimeType !== "application/pdf") throw new Error("故事本只接受 PDF 檔案");
 
-  const uploaded = uploadBase64ToDrive_(base64Data, mimeType, user.Nickname + "_故事本", visibility);
-  const shareOk = uploaded.shareOk;
-  const needsManualPublish = visibility !== "private" && !shareOk;
+  // 故事本一律以「不公開分享」的方式存進 Drive：
+  // driveDisplayUrl_ 產生的 lh3.googleusercontent.com 網址只能餵圖片，對 PDF 沒有意義，
+  // 所以故事本的下載固定走後端代理（needsProxy），不需要 Drive 的公開分享權限。
+  // 也因為完全不依賴分享是否成功，故事本不會有「審核中」這個狀態。
+  const uploaded = uploadBase64ToDrive_(base64Data, mimeType, user.Nickname + "_故事本", "private");
   const autoApprove = parseBoolean_(user.ArtworkAutoApprove);
-  const approved = visibility === "private" ? false : needsManualPublish ? false : autoApprove;
+  const approved = visibility === "private" ? false : autoApprove;
 
   const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
   const id = uuid_();
@@ -973,7 +975,7 @@ function handleSubmitBook_(body) {
     Timestamp: new Date(),
     StudentName: user.StudentName,
     ClassName: user.ClassName,
-    ImageURL: uploaded.publicUrl,
+    ImageURL: "", // 故事本沒有可直接顯示的圖片網址，一律走後端代理
     DriveBackupURL: "",
     Prompt: "",
     Description: description,
@@ -987,7 +989,7 @@ function handleSubmitBook_(body) {
     Visibility: visibility,
     AllowStory: false,
     Source: "User",
-    NeedsManualPublish: needsManualPublish,
+    NeedsManualPublish: false,
     VisibilityUpdatedAt: new Date(),
     Kind: "book",
     Title: title,
@@ -998,7 +1000,7 @@ function handleSubmitBook_(body) {
   return jsonOut_({
     success: true,
     artwork: sanitizeArtworkOwnerView_(refreshed, user),
-    needsManualPublish: needsManualPublish,
+    needsManualPublish: false,
   });
 }
 
@@ -1057,8 +1059,10 @@ function handleUpdateVisibility_(body) {
 
   const update = { Visibility: newVisibility, VisibilityUpdatedAt: new Date() };
   let needsManualPublish = false;
+  const isBook = normalizeKind_(art.Kind) === "book";
 
-  if (art.DriveFileID) {
+  // 故事本永遠走後端代理，不需要動 Drive 的分享設定，也就不會卡在「審核中」
+  if (art.DriveFileID && !isBook) {
     const shared = trySetDriveFileSharing_(art.DriveFileID, newVisibility);
     update.ImageURL = shared.url;
     // Drive 分享設定失敗時，畫面仍會透過後端代理正常顯示圖片（needsProxy），但保險起見
@@ -1067,8 +1071,13 @@ function handleUpdateVisibility_(body) {
   }
   update.NeedsManualPublish = needsManualPublish;
 
-  // 只有「私人 → 非私人」才需要重新走一次審核流程；在 public/gallery_only 之間互換不影響審核狀態
-  if (oldVisibility === "private" && newVisibility !== "private") {
+  if (isBook) {
+    // 故事本不需要審核：每次儲存都直接依公開範圍決定上架狀態。
+    // 這也會順手修好舊版上傳、卡在「審核中」的故事本。
+    update.NeedsManualPublish = false;
+    update.Approved = newVisibility === "private" ? false : parseBoolean_(user.ArtworkAutoApprove);
+  } else if (oldVisibility === "private" && newVisibility !== "private") {
+    // 只有「私人 → 非私人」才需要重新走一次審核流程；在 public/gallery_only 之間互換不影響審核狀態
     update.Approved = needsManualPublish ? false : parseBoolean_(user.ArtworkAutoApprove);
   } else if (needsManualPublish) {
     update.Approved = false;

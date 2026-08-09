@@ -34,9 +34,11 @@ function initSubmitPage(root, user) {
       <p id="quota-counts" style="margin-top:6px;"></p>
     </div>
 
-    <div class="btn-row" id="upload-kind-tabs" style="margin:18px 0 6px;">
-      <button type="button" class="btn btn-outline-dark upload-kind-btn active" data-kind="image">🖼️ 投稿圖片</button>
-      <button type="button" class="btn btn-outline-dark upload-kind-btn" data-kind="book">📖 上傳故事本</button>
+    <div class="seg-tabs-wrap" style="margin-top:18px;">
+      <div class="seg-tabs" id="upload-kind-tabs">
+        <button type="button" class="seg-tab upload-kind-btn active" data-kind="image">🖼️ 投稿圖片</button>
+        <button type="button" class="seg-tab upload-kind-btn" data-kind="book">📖 上傳故事本</button>
+      </div>
     </div>
 
     <form class="submit-form" id="submit-form">
@@ -140,9 +142,11 @@ function initSubmitPage(root, user) {
     </form>
 
     <h2 class="board-heading" style="font-size:1.4rem;margin-top:40px;">📂 我的作品</h2>
-    <div class="btn-row" id="mine-kind-tabs" style="justify-content:center;margin-bottom:14px;">
-      <button type="button" class="btn btn-outline-dark mine-kind-btn active" data-kind="image">🖼️ 圖片</button>
-      <button type="button" class="btn btn-outline-dark mine-kind-btn" data-kind="book">📖 故事本</button>
+    <div class="seg-tabs-wrap">
+      <div class="seg-tabs" id="mine-kind-tabs">
+        <button type="button" class="seg-tab mine-kind-btn active" data-kind="image">🖼️ 圖片</button>
+        <button type="button" class="seg-tab mine-kind-btn" data-kind="book">📖 故事本</button>
+      </div>
     </div>
     <div id="mine-filter-mount"></div>
     <div id="my-submissions"></div>

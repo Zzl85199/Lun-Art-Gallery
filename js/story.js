@@ -126,8 +126,9 @@ function initBookEditor(user) {
       ? currentBook.frames
           .map(
             (f, i) => `
-        <div class="my-story-frame" data-frame-index="${i}">
+        <div class="my-story-frame" data-frame-index="${i}" data-artwork-id="${escapeHtml(f.artworkId || "")}">
           <button class="my-frame-remove" type="button" title="移除這一格" data-frame-index="${i}">×</button>
+          <div class="my-frame-drag" title="按住這裡拖曳，就能改變順序">拖曳排序</div>
           <div class="story-frame-img">
             ${f.unavailable ? `<div class="no-image-placeholder" style="display:flex;"><span class="no-image-icon">🚫</span><span>圖片已無法顯示</span></div>` : `<img data-frame-img-index="${i}" alt="${escapeHtml(f.nickname || "")}">`}
           </div>
@@ -187,6 +188,81 @@ function initBookEditor(user) {
         currentBook.frames[Number(textarea.dataset.frameIndex)].caption = textarea.value;
         scheduleSave();
       });
+    });
+
+    initFrameDragSort();
+  }
+
+  /* ---------------- 拖曳排序 ----------------
+     用 Pointer Events 而不是 HTML5 drag and drop，因為後者在 iPad / 觸控裝置上不會觸發。
+     拖曳只從「拖曳排序」把手開始，這樣文字框還是可以正常點選與輸入。            */
+  function initFrameDragSort() {
+    const zone = document.getElementById("frames-dropzone");
+    if (!zone) return;
+
+    let dragEl = null;
+
+    /** 找出目前指標位置應該插在哪一格前面（回傳 null 代表放到最後） */
+    function frameAfterPoint(x, y) {
+      const others = Array.from(zone.querySelectorAll(".my-story-frame:not(.dragging)"));
+      for (const el of others) {
+        const r = el.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        // 指標已經在這一格所在列的上方，或在同一列但還沒越過中線 → 插在它前面
+        if (cy > y + r.height / 2 || (Math.abs(cy - y) <= r.height / 2 && cx > x)) return el;
+      }
+      return null;
+    }
+
+    /** 拖曳結束後，把畫面上的順序寫回資料並存檔 */
+    function commitOrder() {
+      const orderedIds = Array.from(zone.querySelectorAll(".my-story-frame")).map((el) => el.dataset.artworkId);
+      const remaining = currentBook.frames.slice();
+      const reordered = [];
+      orderedIds.forEach((id) => {
+        const idx = remaining.findIndex((f) => String(f.artworkId) === String(id));
+        if (idx !== -1) reordered.push(remaining.splice(idx, 1)[0]);
+      });
+      // 保險：有對不上的就接在後面，絕對不要弄丟任何一格
+      currentBook.frames = reordered.concat(remaining);
+      renderEditor();
+      scheduleSave();
+    }
+
+    zone.querySelectorAll(".my-frame-drag").forEach((handle) => {
+      const frame = handle.closest(".my-story-frame");
+
+      handle.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        dragEl = frame;
+        frame.classList.add("dragging");
+        zone.classList.add("is-sorting");
+        handle.setPointerCapture(e.pointerId);
+      });
+
+      handle.addEventListener("pointermove", (e) => {
+        if (!dragEl) return;
+        e.preventDefault();
+        const after = frameAfterPoint(e.clientX, e.clientY);
+        if (after === null) {
+          if (zone.lastElementChild !== dragEl) zone.appendChild(dragEl);
+        } else if (after !== dragEl && after.previousElementSibling !== dragEl) {
+          zone.insertBefore(dragEl, after);
+        }
+      });
+
+      function endDrag(e) {
+        if (!dragEl) return;
+        dragEl.classList.remove("dragging");
+        zone.classList.remove("is-sorting");
+        dragEl = null;
+        try { handle.releasePointerCapture(e.pointerId); } catch (err) { /* 已經釋放就忽略 */ }
+        commitOrder();
+      }
+
+      handle.addEventListener("pointerup", endDrag);
+      handle.addEventListener("pointercancel", endDrag);
     });
   }
 

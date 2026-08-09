@@ -14,13 +14,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const cardById = new Map();
 
   /* 圖片 / 故事本兩個分頁 */
-  const kindTabs = document.createElement("div");
-  kindTabs.className = "btn-row gallery-kind-tabs";
-  kindTabs.innerHTML = `
-    <button type="button" class="btn btn-outline-dark gallery-kind-btn active" data-kind="image">🖼️ 圖片</button>
-    <button type="button" class="btn btn-outline-dark gallery-kind-btn" data-kind="book">📖 故事本</button>
+  const kindTabsWrap = document.createElement("div");
+  kindTabsWrap.className = "seg-tabs-wrap";
+  kindTabsWrap.innerHTML = `
+    <div class="seg-tabs">
+      <button type="button" class="seg-tab gallery-kind-btn active" data-kind="image">🖼️ 圖片</button>
+      <button type="button" class="seg-tab gallery-kind-btn" data-kind="book">📖 故事本</button>
+    </div>
   `;
-  filterMount.parentNode.insertBefore(kindTabs, filterMount);
+  filterMount.parentNode.insertBefore(kindTabsWrap, filterMount);
+  const kindTabs = kindTabsWrap;
   kindTabs.querySelectorAll(".gallery-kind-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       currentKind = btn.dataset.kind;

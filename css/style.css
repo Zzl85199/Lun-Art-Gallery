@@ -1869,13 +1869,6 @@ body.is-logged-in .auth-only { display: inline-block !important; }
   word-break: break-word;
 }
 
-/* ===================================================================
-   畫廊：圖片 / 故事本分頁
-   =================================================================== */
-.gallery-kind-tabs {
-  justify-content: center;
-  margin-bottom: 14px;
-}
 
 /* ===================================================================
    卡片縮圖：滑鼠移上去時放大預覽
@@ -1966,3 +1959,86 @@ body.is-logged-in .auth-only { display: inline-block !important; }
   .modal-side { max-height: none; }
   .modal-side-scroll { overflow-y: visible; }
 }
+
+/* ===================================================================
+   分段式切換按鈕（圖片/故事本、投稿圖片/上傳故事本）
+   放在深色黑板底或淺色軟木底上都要看得清楚，所以自己帶一層淺色底殼，
+   選中的那個用深色實心填滿，對比一眼就分得出來。
+   =================================================================== */
+.seg-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: #f3ecd9;
+  border: 2px solid #cbbfa2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+}
+
+.seg-tabs-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 16px;
+}
+
+.seg-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #5b4f3f;
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  padding: 9px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  white-space: nowrap;
+}
+
+.seg-tab:hover { background: rgba(120, 100, 70, 0.14); }
+
+.seg-tab.active {
+  background: var(--blackboard, #1b3328);
+  color: var(--chalk-white, #f5f1e6);
+  font-weight: 700;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.seg-tab.active:hover { background: var(--blackboard, #1b3328); }
+
+@media (max-width: 480px) {
+  .seg-tab { padding: 8px 14px; font-size: 0.98rem; }
+}
+
+/* ===================================================================
+   故事本編輯器：拖曳排序
+   =================================================================== */
+.my-frame-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 0 7px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  background: rgba(120, 100, 70, 0.12);
+  color: #6b5f4c;
+  font-size: 0.82rem;
+  cursor: grab;
+  user-select: none;
+  /* 觸控裝置上按住把手拖曳時不要跟著捲動頁面 */
+  touch-action: none;
+}
+
+.my-frame-drag:active { cursor: grabbing; }
+.my-frame-drag::before { content: "⠿"; font-size: 1.1rem; letter-spacing: 2px; }
+
+.my-story-frame.dragging {
+  opacity: 0.55;
+  transform: scale(0.97) rotate(-1.5deg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.my-story-board-dropzone.is-sorting .my-story-frame { transition: transform 0.15s ease; }
