@@ -829,12 +829,6 @@ button {
 }
 
 .desc-block h4,
-.comments-block h4 {
-  font-family: var(--font-display-en);
-  color: var(--ink-soft);
-  margin: 0 0 6px;
-  font-size: 1rem;
-}
 
 .like-row {
   display: flex;
@@ -860,51 +854,12 @@ button {
   cursor: default;
 }
 
-.comments-block {
-  border-top: 2px dashed var(--kraft-dark);
-  padding-top: 16px;
-}
 
-.comment-item {
-  background: var(--kraft);
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-}
 
-.comment-item b {
-  font-family: var(--font-hand);
-  font-size: 1.05rem;
-  margin-right: 6px;
-}
 
-.comment-time {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
 
-.comment-form {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
 
-.comment-form input {
-  flex: 1;
-  min-width: 120px;
-  padding: 8px 10px;
-  border: 2px solid var(--kraft-dark);
-  border-radius: 6px;
-  font-family: var(--font-body);
-}
 
-.comment-form input[name="name"] {
-  flex: 0 0 120px;
-}
 
 /* ===================================================================
    投稿頁 — 表單
@@ -1912,4 +1867,102 @@ body.is-logged-in .auth-only { display: inline-block !important; }
   font-size: 1.05rem;
   color: #4a3c28;
   word-break: break-word;
+}
+
+/* ===================================================================
+   畫廊：圖片 / 故事本分頁
+   =================================================================== */
+.gallery-kind-tabs {
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+/* ===================================================================
+   卡片縮圖：滑鼠移上去時放大預覽
+   （手機沒有 hover，靠既有的點擊開視窗即可）
+   =================================================================== */
+.note-thumb-wrap .note-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+  transform-origin: center center;
+}
+
+@media (hover: hover) {
+  .note-card:hover .note-thumb-wrap .note-thumb-img { transform: scale(1.18); }
+}
+
+/* 故事本卡片的封面：填滿整個縮圖框 */
+.note-thumb-wrap.is-book { display: flex; }
+.note-thumb-wrap.is-book .book-thumb {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* ===================================================================
+   作品詳細視窗：右欄與圖片等高，超出的部分自己捲動
+   （避免圖片較高時右邊下面留一大片空白）
+   =================================================================== */
+.modal-grid { align-items: start; }
+
+.modal-side {
+  display: flex;
+  flex-direction: column;
+  max-height: min(72vh, 620px);
+  min-height: 0;
+}
+
+.modal-side-head { flex: 0 0 auto; }
+
+.modal-side-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* 捲軸做得低調一點，不要搶畫面 */
+.modal-side-scroll::-webkit-scrollbar { width: 8px; }
+.modal-side-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 100, 70, 0.35);
+  border-radius: 4px;
+}
+.modal-side-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.modal-img-wrap img { max-height: min(72vh, 620px); object-fit: contain; }
+
+.modal-img-wrap .book-thumb {
+  min-height: 260px;
+  border-radius: 6px;
+}
+
+/* 名字與按讚同一行 */
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.modal-title-row .modal-title { margin: 0; }
+
+.modal-like-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.modal-like-inline .like-btn { padding: 6px 14px; font-size: 0.9rem; }
+
+@media (max-width: 720px) {
+  .modal-side { max-height: none; }
+  .modal-side-scroll { overflow-y: visible; }
 }

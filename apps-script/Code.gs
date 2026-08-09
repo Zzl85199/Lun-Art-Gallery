@@ -19,7 +19,6 @@
 const CONFIG = {
   SHEET_ARTWORKS: "Artworks",
   SHEET_USERS: "AuthorizedUsers",
-  SHEET_COMMENTS: "Comments",
   SHEET_STORY_BOOKS: "StoryBooks",
   SHEET_AI_USAGE: "AIUsage",
   SHEET_SETTINGS: "Settings",
@@ -71,7 +70,6 @@ const USER_HEADERS = [
 // 老師仍可打入清單外的文字，後端邏輯只認「Active」以外一律視為不可用）
 const STATUS_VALUES = ["Pending", "Active", "Disabled", "Suspended", "Inactive"];
 
-const COMMENT_HEADERS = ["ArtworkID", "CommenterName", "Comment", "Timestamp"];
 const STORY_BOOKS_HEADERS = ["BookID", "OwnerUserID", "Title", "FramesJSON", "Status", "CreatedAt", "UpdatedAt"];
 const AI_USAGE_HEADERS = ["DateKey", "UserID", "Mode", "UsedCount", "InputTokens", "OutputTokens", "UpdatedAt"];
 const SETTINGS_HEADERS = ["Key", "Value"];
@@ -613,8 +611,8 @@ function getArtworksAll_() {
    ------------------------------------------------------------------------- */
 function handleListPublic_() {
   const all = getArtworksAll_();
+  // 圖片與故事本都會回傳，前端再用 Kind 分成兩個分頁顯示
   const visible = all
-    .filter((a) => normalizeKind_(a.Kind) === "image")
     .filter((a) => parseBoolean_(a.Approved))
     .filter((a) => {
       const vis = normalizeVisibility_(a.Visibility);
@@ -1085,7 +1083,7 @@ function handleUpdateVisibility_(body) {
 }
 
 /* -------------------------------------------------------------------------
-   Like / Comment（公開功能，畫廊瀏覽不需登入）
+   按讚（公開功能，畫廊瀏覽不需登入）
    ------------------------------------------------------------------------- */
 function handleLike_(body) {
   const artworkId = body.artworkId;
@@ -1104,27 +1102,7 @@ function handleLike_(body) {
   return jsonOut_({ success: true, likes: updated });
 }
 
-function handleComment_(body) {
-  const artworkId = body.artworkId;
-  const commenterName = String(body.commenterName || "").trim().slice(0, 40);
-  const comment = String(body.comment || "").trim().slice(0, 400);
-  if (!artworkId || !commenterName || !comment) {
-    return jsonOut_({ error: "缺少必要欄位（artworkId / commenterName / comment）" });
-  }
-  const sheet = getSheet_(CONFIG.SHEET_COMMENTS);
-  appendObjectRow_(sheet, { ArtworkID: artworkId, CommenterName: commenterName, Comment: comment, Timestamp: new Date() });
-  return jsonOut_({ success: true });
-}
 
-function handleComments_(artworkId) {
-  if (!artworkId) return jsonOut_({ error: "缺少 artworkId 參數" });
-  const all = sheetToObjects_(getSheet_(CONFIG.SHEET_COMMENTS));
-  const comments = all
-    .filter((c) => String(c.ArtworkID) === String(artworkId))
-    .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp))
-    .map((c) => ({ CommenterName: c.CommenterName, Comment: c.Comment, Timestamp: c.Timestamp }));
-  return jsonOut_({ comments });
-}
 
 /* =========================================================================
    共用：台北時區位移（AI 額度的每日重置計算會用到）
@@ -1631,7 +1609,6 @@ function handleAiGenerate_(body) {
 function doGet(e) {
   try {
     const action = (e.parameter && e.parameter.action) || "list";
-    if (action === "comments") return handleComments_(e.parameter.artworkId);
     return handleListPublic_();
   } catch (err) {
     return jsonOut_({ error: safeErrorMessage_(err) });
@@ -1653,7 +1630,6 @@ const POST_ACTIONS = {
   "image/get": handleImageGet_,
 
   "like": handleLike_,
-  "comment": handleComment_,
 
   "submitBook": handleSubmitBook_,
   "artwork/delete": handleArtworkDelete_,
@@ -1730,7 +1706,6 @@ function setupOrMigrate() {
 
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_ARTWORKS, ARTWORK_HEADERS);
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_USERS, USER_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_COMMENTS, COMMENT_HEADERS);
   // 投票功能已移除，StoryChain / StoryRounds / StoryVotes / HonorBoard 這四個分頁
   // 不再建立也不再寫入。既有的分頁不會自動刪除（保留資料），要清掉請執行 deleteUnusedSheets()。
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_BOOKS, STORY_BOOKS_HEADERS);
@@ -1852,6 +1827,7 @@ function setAllUsersResetHour() {
      - StoryVotes   每一票的紀錄
      - HonorBoard   歷屆榮譽榜
      - StoryChain   更早期的舊版故事接龍，程式碼裡早就標記為「不再寫入」
+     - Comments     留言功能（已整組移除）
 
    刻意「不」刪除的分頁（還有功能在用，刪了會壞）：
      - Artworks         所有作品（圖片 + 故事本）
@@ -1859,11 +1835,9 @@ function setAllUsersResetHour() {
      - StoryBooks       故事接龍頁的故事本草稿
      - AIUsage          AI 每日額度計數
      - Settings         各種設定值
-     - Comments         留言功能（目前前端沒有入口，但後端仍保留 API；
-                        確定不做留言功能的話可以自己手動刪掉這一個）
    ========================================================================= */
 function deleteUnusedSheets() {
-  const OBSOLETE = ["StoryRounds", "StoryVotes", "HonorBoard", "StoryChain"];
+  const OBSOLETE = ["StoryRounds", "StoryVotes", "HonorBoard", "StoryChain", "Comments"];
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const deleted = [];

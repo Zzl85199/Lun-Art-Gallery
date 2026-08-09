@@ -111,11 +111,7 @@ const Api = {
 
   /* ---------------- 公開（不需登入）---------------- */
   getArtworks() { return this._get({ action: "list" }); },
-  getComments(artworkId) { return this._get({ action: "comments", artworkId }); },
   likeArtwork(artworkId) { return this._post({ action: "like", artworkId }, { auth: false }); },
-  postComment(artworkId, commenterName, comment) {
-    return this._post({ action: "comment", artworkId, commenterName, comment }, { auth: false });
-  },
 
   /* ---------------- 登入 / 帳號 ---------------- */
   authLogin(idToken) { return this._post({ action: "auth/login", idToken }, { auth: false }); },

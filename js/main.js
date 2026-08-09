@@ -160,16 +160,25 @@ function createNoteCardEl(art, opts) {
 
   const showVisibilityBadge = opts.showVisibilityBadge && art.Visibility;
 
+  const isBook = art.Kind === "book";
+
+  const thumbInner = isBook
+    ? `<div class="book-thumb">
+         <span class="book-thumb-icon">📖</span>
+         <span class="book-thumb-title">${escapeHtml(art.Title || "未命名故事本")}</span>
+       </div>`
+    : `<img class="note-thumb-img" loading="lazy" alt="${escapeHtml(art.DisplayName)} 的 AI 作品">
+       <div class="no-image-placeholder">
+         <span class="no-image-icon">🖼️</span>
+         <span>尚無圖片</span>
+       </div>`;
+
   card.innerHTML = `
     <span class="pin"></span>
     <span class="sticker"></span>
     <span class="tape-corner"></span>
-    <div class="note-thumb-wrap">
-      <img loading="lazy" alt="${escapeHtml(art.DisplayName)} 的 AI 作品">
-      <div class="no-image-placeholder">
-        <span class="no-image-icon">🖼️</span>
-        <span>尚無圖片</span>
-      </div>
+    <div class="note-thumb-wrap${isBook ? " is-book" : ""}">
+      ${thumbInner}
       ${showVisibilityBadge ? `<span class="visibility-badge">${visibilityLabel(art.Visibility)}</span>` : ""}
     </div>
     <div class="note-meta-row">
@@ -177,7 +186,7 @@ function createNoteCardEl(art, opts) {
       <span class="note-class">${escapeHtml(art.ClassName)}</span>
     </div>
     <div class="note-tags">
-      ${art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
+      ${!isBook && art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
       ${parseArtTags(art).map((t) => `<span class="tag-chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</span>`).join("")}
     </div>
     <div class="note-footer-row">
@@ -185,9 +194,9 @@ function createNoteCardEl(art, opts) {
     </div>
   `;
 
-  const img = card.querySelector("img");
-  const placeholder = card.querySelector(".no-image-placeholder");
-  setupArtworkImage(img, placeholder, art);
+  if (!isBook) {
+    setupArtworkImage(card.querySelector("img"), card.querySelector(".no-image-placeholder"), art);
+  }
 
   attachTiltEffect(card);
 
@@ -290,7 +299,6 @@ function renderStateMessage(container, { type, text, onRetry }) {
    =================================================================== */
 let currentModalArtwork = null;
 let modalPoller = null;
-let lastCommentSignature = "";
 
 function ensureModalExists() {
   if (document.getElementById("artwork-modal")) return;
@@ -307,29 +315,33 @@ function ensureModalExists() {
             <span class="no-image-icon">🖼️</span>
             <span>這件作品尚無圖片</span>
           </div>
+          <div class="book-thumb" id="modal-book-cover" style="display:none;">
+            <span class="book-thumb-icon">📖</span>
+            <span class="book-thumb-title"></span>
+          </div>
         </div>
-        <div>
-          <h2 class="modal-title" id="modal-title"></h2>
-          <div class="modal-sub" id="modal-sub"></div>
-          <div class="note-tags" id="modal-tags" style="margin-bottom:12px;"></div>
-          <div class="prompt-note" id="modal-prompt"></div>
-          <div class="desc-block">
-            <h4>創作說明</h4>
-            <div id="modal-desc"></div>
+        <div class="modal-side">
+          <div class="modal-side-head">
+            <div class="modal-title-row">
+              <h2 class="modal-title" id="modal-title"></h2>
+              <div class="modal-like-inline">
+                <button class="like-btn" id="modal-like-btn">♥ 按讚</button>
+                <span id="modal-like-count"></span>
+              </div>
+            </div>
+            <div class="modal-sub" id="modal-sub"></div>
           </div>
-          <div class="like-row">
-            <button class="like-btn" id="modal-like-btn">♥ 按讚</button>
-            <span id="modal-like-count"></span>
-          </div>
-          <div class="comments-block">
-            <h4>留言區</h4>
-            <div id="modal-comments-list"></div>
-            <form class="comment-form" id="modal-comment-form">
-              <input type="text" name="name" placeholder="你的名字" required maxlength="20">
-              <input type="text" name="comment" placeholder="留言鼓勵一下吧！" required maxlength="200">
-              <button type="submit" class="btn btn-pin" style="padding:8px 16px;font-size:0.95rem;">送出</button>
-            </form>
-            <div class="form-msg" id="modal-comment-msg"></div>
+          <div class="modal-side-scroll">
+            <div class="note-tags" id="modal-tags" style="margin-bottom:12px;"></div>
+            <div id="modal-book-actions" style="display:none;margin-bottom:14px;">
+              <button type="button" class="btn btn-pin" id="modal-book-download">⬇️ 下載這本故事本（PDF）</button>
+              <div class="form-msg-inline" id="modal-book-msg"></div>
+            </div>
+            <div class="prompt-note" id="modal-prompt"></div>
+            <div class="desc-block">
+              <h4>創作說明</h4>
+              <div id="modal-desc"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -343,7 +355,6 @@ function ensureModalExists() {
     if (e.key === "Escape" && overlay.classList.contains("open")) closeModal();
   });
 
-  overlay.querySelector("#modal-comment-form").addEventListener("submit", handleCommentSubmit);
 }
 
 function closeModal() {
@@ -377,20 +388,57 @@ async function openArtworkModal(art) {
   currentModalArtwork = art;
   const overlay = document.getElementById("artwork-modal");
 
+  const isBook = art.Kind === "book";
   const img = document.getElementById("modal-img");
   const imgPlaceholder = document.getElementById("modal-img-placeholder");
-  img.alt = art.DisplayName + " 的 AI 作品";
-  setupArtworkImage(img, imgPlaceholder, art);
+  const bookCover = document.getElementById("modal-book-cover");
+  const bookActions = document.getElementById("modal-book-actions");
+  const bookMsg = document.getElementById("modal-book-msg");
+
+  img.style.display = isBook ? "none" : "";
+  imgPlaceholder.style.display = isBook ? "none" : "";
+  bookCover.style.display = isBook ? "" : "none";
+  bookActions.style.display = isBook ? "" : "none";
+  bookMsg.textContent = "";
+
+  if (isBook) {
+    bookCover.querySelector(".book-thumb-title").textContent = art.Title || "未命名故事本";
+    const dlBtn = document.getElementById("modal-book-download");
+    dlBtn.disabled = false;
+    dlBtn.textContent = "⬇️ 下載這本故事本（PDF）";
+    dlBtn.onclick = async () => {
+      dlBtn.disabled = true;
+      dlBtn.textContent = "準備下載中...";
+      try {
+        const dataUrl = art.needsProxy || !art.ImageURL
+          ? await Api.fetchPrivateImageDataUrl(art.ID)
+          : art.ImageURL;
+        const safe = (art.Title || "故事本").replace(/[\\/:*?"<>|]/g, "_");
+        triggerFileDownload(dataUrl, `${safe}.pdf`);
+        bookMsg.textContent = "✅ 已開始下載";
+      } catch (err) {
+        bookMsg.textContent = "❌ 下載失敗：" + err.message;
+      } finally {
+        dlBtn.disabled = false;
+        dlBtn.textContent = "⬇️ 下載這本故事本（PDF）";
+      }
+    };
+  } else {
+    img.alt = art.DisplayName + " 的 AI 作品";
+    setupArtworkImage(img, imgPlaceholder, art);
+  }
 
   document.getElementById("modal-title").textContent = art.DisplayName;
   document.getElementById("modal-sub").textContent = `${art.ClassName} · ${new Date(art.Timestamp).toLocaleDateString("zh-TW")}${
     art.Visibility ? " · " + visibilityLabel(art.Visibility) : ""
   }`;
   document.getElementById("modal-tags").innerHTML = `
-    ${art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
+    ${!isBook && art.AITool ? `<span class="tool-chip">${escapeHtml(art.AITool)}</span>` : ""}
     ${parseArtTags(art).map((t) => `<span class="tag-chip">#${escapeHtml(t)}</span>`).join("")}
   `;
-  document.getElementById("modal-prompt").textContent = art.Prompt || "（未提供 Prompt）";
+  const promptEl = document.getElementById("modal-prompt");
+  promptEl.style.display = isBook ? "none" : "";
+  promptEl.textContent = art.Prompt || "（未提供 Prompt）";
   document.getElementById("modal-desc").textContent = art.Description || "（未提供說明）";
 
   const likeBtn = document.getElementById("modal-like-btn");
@@ -402,51 +450,7 @@ async function openArtworkModal(art) {
   likeBtn.textContent = alreadyLiked ? "已按讚" : "♥ 按讚";
   likeBtn.onclick = () => handleLikeClick(art);
 
-  document.getElementById("modal-comment-msg").className = "form-msg";
-  document.getElementById("modal-comments-list").innerHTML = `<div style="color:#8a7d63;font-size:0.88rem;">留言載入中...</div>`;
-
   overlay.classList.add("open");
-
-  try {
-    const res = await Api.getComments(art.ID);
-    lastCommentSignature = commentSignature_(res.comments || []);
-    renderComments(res.comments || []);
-  } catch (err) {
-    document.getElementById("modal-comments-list").innerHTML =
-      `<div style="color:#a8402f;font-size:0.88rem;">留言載入失敗：${escapeHtml(err.message)}</div>`;
-  }
-
-  if (modalPoller) modalPoller.stop();
-  modalPoller = createPoller(async () => {
-    if (!currentModalArtwork || currentModalArtwork.ID !== art.ID) return;
-    const res = await Api.getComments(art.ID);
-    const sig = commentSignature_(res.comments || []);
-    if (sig !== lastCommentSignature) {
-      lastCommentSignature = sig;
-      renderComments(res.comments || []);
-    }
-  }, 8000);
-}
-
-function commentSignature_(comments) {
-  return comments.length + "|" + (comments[comments.length - 1]?.Timestamp || "");
-}
-
-function renderComments(comments) {
-  const list = document.getElementById("modal-comments-list");
-  if (!comments.length) {
-    list.innerHTML = `<div style="color:#8a7d63;font-size:0.88rem;">還沒有留言，來當第一個吧！</div>`;
-    return;
-  }
-  list.innerHTML = comments
-    .map(
-      (c) => `
-      <div class="comment-item">
-        <b>${escapeHtml(c.CommenterName)}</b>${escapeHtml(c.Comment)}
-        <span class="comment-time">${new Date(c.Timestamp).toLocaleString("zh-TW")}</span>
-      </div>`
-    )
-    .join("");
 }
 
 async function handleLikeClick(art) {
@@ -465,33 +469,6 @@ async function handleLikeClick(art) {
     likeBtn.disabled = false;
     likeBtn.textContent = "♥ 按讚";
     alert("按讚失敗：" + err.message);
-  }
-}
-
-async function handleCommentSubmit(e) {
-  e.preventDefault();
-  const form = e.target;
-  const name = form.name.value.trim();
-  const comment = form.comment.value.trim();
-  const msgEl = document.getElementById("modal-comment-msg");
-  if (!name || !comment) return;
-
-  const submitBtn = form.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
-
-  try {
-    await Api.postComment(currentModalArtwork.ID, name, comment);
-    form.reset();
-    msgEl.className = "form-msg show success";
-    msgEl.textContent = "留言送出成功！";
-    const res = await Api.getComments(currentModalArtwork.ID);
-    lastCommentSignature = commentSignature_(res.comments || []);
-    renderComments(res.comments || []);
-  } catch (err) {
-    msgEl.className = "form-msg show error";
-    msgEl.textContent = "留言失敗：" + err.message;
-  } finally {
-    submitBtn.disabled = false;
   }
 }
 

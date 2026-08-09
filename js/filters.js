@@ -86,6 +86,11 @@ function mountSharedFilterBar(containerEl, idPrefix) {
     countEl,
     onChange(cb) { onChangeCb = cb; },
     setTag(tag) { tagSel.value = tag; state.tag = tag; onChangeCb(); },
+    /** 故事本沒有「使用的 AI 工具」這個概念，切到故事本分頁時把這個下拉藏起來 */
+    setToolFilterVisible(visible) {
+      toolSel.style.display = visible ? "" : "none";
+      if (!visible && state.aiTool) { toolSel.value = ""; state.aiTool = ""; }
+    },
     refreshOptions(artworks) {
       const classes = artworks.map((a) => a.ClassName);
       const nicknames = artworks.map((a) => a.DisplayName || a.Nickname || a.StudentName);
