@@ -20,10 +20,6 @@ const CONFIG = {
   SHEET_ARTWORKS: "Artworks",
   SHEET_USERS: "AuthorizedUsers",
   SHEET_COMMENTS: "Comments",
-  SHEET_STORY_CHAIN: "StoryChain", // 舊版資料保留備存，新版不再寫入
-  SHEET_STORY_ROUNDS: "StoryRounds",
-  SHEET_STORY_VOTES: "StoryVotes",
-  SHEET_HONOR_BOARD: "HonorBoard",
   SHEET_STORY_BOOKS: "StoryBooks",
   SHEET_AI_USAGE: "AIUsage",
   SHEET_SETTINGS: "Settings",
@@ -31,16 +27,15 @@ const CONFIG = {
 };
 
 const DEFAULT_SETTINGS = {
-  STORY_CANDIDATES_PER_ROUND: 4,
-  STORY_DAILY_ROLLOVER_HOUR: 12, // Asia/Taipei，24 小時制
   STORY_BOOK_MAX_PAGES: 30,
   STORY_BOOK_CHARS_PER_PAGE: 200,
   STORY_BOOK_MAX_ACTIVE: 3,
   AI_DEFAULT_QUOTA_LIMIT: 30,
   AI_DEFAULT_RESET_HOUR: 23, // Asia/Taipei，配合下方固定的 RESET_MINUTE=59，等於每天 23:59:59 重置
-  // 每個帳號最多能擁有幾件作品；達到上限就不再讓 AI 作圖產生新圖。
-  // ★ 要調整請同步修改前端 js/config.js 的 MAX_ARTWORKS_PER_USER。
-  MAX_ARTWORKS_PER_USER: 94,
+  // 每個帳號最多能擁有幾張「圖片」作品與幾本「故事本」；達到上限就不能再新增。
+  // ★ 要調整請同步修改前端 js/config.js 的同名設定。
+  MAX_ARTWORKS_PER_USER: 100,
+  MAX_BOOKS_PER_USER: 10,
   AI_MODEL: "gpt-image-1",
   AI_SIZE: "1024x1024",
   AI_QUALITY: "medium",
@@ -59,6 +54,11 @@ const ARTWORK_HEADERS = [
   // 新欄位
   "OwnerUserID", "Nickname", "DriveFileID", "Visibility", "AllowStory", "Source",
   "NeedsManualPublish", "VisibilityUpdatedAt",
+  // Kind 用來區分這一列是「圖片作品」還是「上傳的故事本 PDF」：
+  // "image"（預設，舊資料一律視為圖片）或 "book"。
+  "Kind",
+  // Title 目前只有故事本會用到（圖片作品留空）
+  "Title",
 ];
 
 const USER_HEADERS = [
@@ -72,12 +72,6 @@ const USER_HEADERS = [
 const STATUS_VALUES = ["Pending", "Active", "Disabled", "Suspended", "Inactive"];
 
 const COMMENT_HEADERS = ["ArtworkID", "CommenterName", "Comment", "Timestamp"];
-const STORY_CHAIN_HEADERS = [
-  "Order", "ArtworkID", "StudentName", "ClassName", "ImageURL", "AITool", "WinningVotes", "Timestamp",
-];
-const STORY_ROUNDS_HEADERS = ["RoundID", "ClassName", "Status", "CandidateIDsJSON", "StartedAt", "EndsAt", "ClosedAt"];
-const STORY_VOTES_HEADERS = ["RoundID", "UserID", "ArtworkID", "UpdatedAt"];
-const HONOR_BOARD_HEADERS = ["RoundID", "ClassName", "Rank", "ArtworkID", "Votes", "ClosedAt"];
 const STORY_BOOKS_HEADERS = ["BookID", "OwnerUserID", "Title", "FramesJSON", "Status", "CreatedAt", "UpdatedAt"];
 const AI_USAGE_HEADERS = ["DateKey", "UserID", "Mode", "UsedCount", "InputTokens", "OutputTokens", "UpdatedAt"];
 const SETTINGS_HEADERS = ["Key", "Value"];
@@ -590,8 +584,14 @@ function sanitizeArtworkPublic_(a) {
     Tags: a.Tags || "",
     Likes: Number(a.Likes || 0),
     Visibility: normalizeVisibility_(a.Visibility),
-    AllowStory: parseBoolean_(a.AllowStory),
+    Kind: normalizeKind_(a.Kind),
+    Title: a.Title || "",
   };
+}
+
+/** 舊資料沒有 Kind 欄位，一律當成圖片 */
+function normalizeKind_(v) {
+  return String(v || "").trim().toLowerCase() === "book" ? "book" : "image";
 }
 
 /** 給作品擁有者自己看的版本（我的投稿列表 / 素材庫裡的「我的」項目），多帶 needsProxy 供前端建構私人圖片網址 */
@@ -614,6 +614,7 @@ function getArtworksAll_() {
 function handleListPublic_() {
   const all = getArtworksAll_();
   const visible = all
+    .filter((a) => normalizeKind_(a.Kind) === "image")
     .filter((a) => parseBoolean_(a.Approved))
     .filter((a) => {
       const vis = normalizeVisibility_(a.Visibility);
@@ -631,6 +632,7 @@ function handleMaterialLibrary_(body) {
   const user = requireActiveUser_(body);
   const all = getArtworksAll_();
   const result = all
+    .filter((a) => normalizeKind_(a.Kind) === "image")
     .filter((a) => {
       const isMine = String(a.OwnerUserID) === String(user.UserID);
       if (isMine) return true;
@@ -730,6 +732,12 @@ function makeDriveFilePrivate_(driveFileId) {
  *     只是無法產生一個「不經過我們後端」的直接網址；呼叫端（投稿/切換公開範圍）應該把
  *     這件事反映在 Approved 狀態上，提醒老師需要協助確認。
  */
+/** 把 Drive 檔案移到垃圾桶（不是永久刪除，30 天內都還救得回來） */
+function trashDriveFile_(driveFileId) {
+  if (!driveFileId) return;
+  Drive.Files.update({ trashed: true }, driveFileId);
+}
+
 function trySetDriveFileSharing_(driveFileId, visibility) {
   if (!driveFileId) return { ok: true, url: "" };
   try {
@@ -805,7 +813,9 @@ function backupUrlToDrive_(imageUrl, ownerLabel) {
 
 /** 把使用者上傳的 base64 圖片存進 Drive；visibility='private' 時完全不設公開分享權限 */
 function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
-  if (!mimeType || mimeType.indexOf("image/") !== 0) throw new Error("檔案類型不是圖片");
+  const isImage = !!mimeType && mimeType.indexOf("image/") === 0;
+  const isPdf = mimeType === "application/pdf";
+  if (!isImage && !isPdf) throw new Error("檔案類型必須是圖片或 PDF");
   let bytes;
   try {
     bytes = Utilities.base64Decode(base64Data);
@@ -813,9 +823,9 @@ function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
     throw new Error("圖片資料格式錯誤");
   }
   const MAX_BYTES = 9 * 1024 * 1024;
-  if (bytes.length > MAX_BYTES) throw new Error("圖片檔案太大，請壓縮到 9MB 以內再上傳");
+  if (bytes.length > MAX_BYTES) throw new Error("檔案太大，請壓縮到 9MB 以內再上傳");
 
-  const ext = guessExtension_(mimeType);
+  const ext = isPdf ? "pdf" : guessExtension_(mimeType);
   const fileName = sanitizeFileNamePart_(ownerLabel) + "_" + Date.now() + "." + ext;
   const blob = Utilities.newBlob(bytes, mimeType, fileName);
   const folder = getBackupFolder_();
@@ -829,6 +839,7 @@ function uploadBase64ToDrive_(base64Data, mimeType, ownerLabel, visibility) {
 
 function handleSubmit_(body) {
   const user = requireActiveUser_(body);
+  assertUnderLimit_(user, "image");
 
   const visibility = normalizeVisibility_(body.visibility);
   const aiTool = String(body.aiTool || "").trim().slice(0, 60);
@@ -867,7 +878,6 @@ function handleSubmit_(body) {
     shareOk = uploaded.shareOk;
   }
 
-  const allowStory = visibility === "public" ? !!body.allowStory : false;
   const autoApprove = parseBoolean_(user.ArtworkAutoApprove);
   // Drive 分享設定失敗時（needsManualPublish），不管 AutoApprove 設定為何，一律先標記成
   // 「審核中」，避免學生以為已經公開、但其實圖片顯示依賴的機制沒有完全設定成功。
@@ -893,14 +903,137 @@ function handleSubmit_(body) {
     Nickname: user.Nickname,
     DriveFileID: driveFileId,
     Visibility: visibility,
-    AllowStory: allowStory,
+    AllowStory: false,
     Source: "User",
+    Kind: "image",
     NeedsManualPublish: needsManualPublish,
     VisibilityUpdatedAt: new Date(),
   });
   invalidateCache_(CONFIG.SHEET_ARTWORKS);
 
   return jsonOut_({ success: true, id, approved, visibility, needsManualPublish });
+}
+
+
+/* -------------------------------------------------------------------------
+   數量上限：圖片與故事本分開計算
+   ------------------------------------------------------------------------- */
+
+/** 算出這個帳號目前有幾張圖片、幾本故事本 */
+function countOwnedByKind_(userId) {
+  const mine = getArtworksAll_().filter((a) => String(a.OwnerUserID) === String(userId));
+  let images = 0, books = 0;
+  mine.forEach((a) => { if (normalizeKind_(a.Kind) === "book") books++; else images++; });
+  return { images: images, books: books };
+}
+
+/** 超過上限就擋下來。kind 傳 "image" 或 "book"。 */
+function assertUnderLimit_(user, kind) {
+  const settings = getSettings_();
+  const counts = countOwnedByKind_(user.UserID);
+  if (kind === "book") {
+    const max = settingNum_(settings, "MAX_BOOKS_PER_USER");
+    if (max > 0 && counts.books >= max) {
+      throw new Error("故事本數量已達上限（" + counts.books + " / " + max + " 本），請先刪除一些故事本再上傳吧！");
+    }
+  } else {
+    const max = settingNum_(settings, "MAX_ARTWORKS_PER_USER");
+    if (max > 0 && counts.images >= max) {
+      throw new Error("圖片作品數量已達上限（" + counts.images + " / " + max + " 張），請先刪除一些作品再繼續吧！");
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+   POST action=submitBook：上傳故事本 PDF
+   （故事接龍頁做好故事本 → 產生列印頁 → 另存成 PDF → 從「我的頁面」上傳）
+   ------------------------------------------------------------------------- */
+function handleSubmitBook_(body) {
+  const user = requireActiveUser_(body);
+  assertUnderLimit_(user, "book");
+
+  const visibility = normalizeVisibility_(body.visibility);
+  const title = String(body.title || "").trim().slice(0, 200) || "未命名故事本";
+  const description = String(body.description || "").trim().slice(0, 4000);
+  const tags = String(body.tags || "").trim().slice(0, 400);
+
+  const base64Data = String(body.fileBase64 || "");
+  const mimeType = String(body.mimeType || "");
+  if (!base64Data) throw new Error("請選擇要上傳的 PDF 檔案");
+  if (mimeType !== "application/pdf") throw new Error("故事本只接受 PDF 檔案");
+
+  const uploaded = uploadBase64ToDrive_(base64Data, mimeType, user.Nickname + "_故事本", visibility);
+  const shareOk = uploaded.shareOk;
+  const needsManualPublish = visibility !== "private" && !shareOk;
+  const autoApprove = parseBoolean_(user.ArtworkAutoApprove);
+  const approved = visibility === "private" ? false : needsManualPublish ? false : autoApprove;
+
+  const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
+  const id = uuid_();
+  appendObjectRow_(artworksSheet, {
+    ID: id,
+    Timestamp: new Date(),
+    StudentName: user.StudentName,
+    ClassName: user.ClassName,
+    ImageURL: uploaded.publicUrl,
+    DriveBackupURL: "",
+    Prompt: "",
+    Description: description,
+    AITool: "",
+    Tags: tags,
+    Likes: 0,
+    Approved: approved,
+    OwnerUserID: user.UserID,
+    Nickname: user.Nickname,
+    DriveFileID: uploaded.driveFileId,
+    Visibility: visibility,
+    AllowStory: false,
+    Source: "User",
+    NeedsManualPublish: needsManualPublish,
+    VisibilityUpdatedAt: new Date(),
+    Kind: "book",
+    Title: title,
+  });
+
+  invalidateCache_(CONFIG.SHEET_ARTWORKS);
+  const refreshed = getArtworksAll_().find((a) => String(a.ID) === id) || {};
+  return jsonOut_({
+    success: true,
+    artwork: sanitizeArtworkOwnerView_(refreshed, user),
+    needsManualPublish: needsManualPublish,
+  });
+}
+
+/* -------------------------------------------------------------------------
+   POST action=artwork/delete：刪除自己的作品（圖片或故事本）
+   Drive 上的檔案會移到垃圾桶（不是永久刪除），誤刪還有機會救回來。
+   ------------------------------------------------------------------------- */
+function handleArtworkDelete_(body) {
+  const user = requireActiveUser_(body);
+  const artworkId = String(body.artworkId || "");
+  if (!artworkId) throw new Error("缺少 artworkId");
+
+  const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
+  const all = sheetToObjects_(artworksSheet);
+  const art = all.find((a) => String(a.ID) === artworkId);
+  if (!art) throw new Error("找不到這件作品");
+  if (String(art.OwnerUserID) !== String(user.UserID)) throw new Error("沒有權限刪除別人的作品");
+
+  // 先丟 Drive 檔案（失敗不擋刪除，避免 Sheet 留下一列指向不存在的圖片）
+  if (art.DriveFileID) {
+    try {
+      trashDriveFile_(art.DriveFileID);
+    } catch (e) {
+      // 忽略：檔案可能已經被手動刪掉了
+    }
+  }
+
+  const rowNum = findRowByValue_(artworksSheet, "ID", artworkId);
+  if (rowNum !== -1) artworksSheet.deleteRow(rowNum);
+  invalidateCache_(CONFIG.SHEET_ARTWORKS);
+
+  const counts = countOwnedByKind_(user.UserID);
+  return jsonOut_({ success: true, counts: counts });
 }
 
 function handleUpdateVisibility_(body) {
@@ -916,7 +1049,6 @@ function handleUpdateVisibility_(body) {
 
   const oldVisibility = normalizeVisibility_(art.Visibility);
   const newVisibility = normalizeVisibility_(body.visibility);
-  const newAllowStory = newVisibility === "public" ? !!body.allowStory : false;
 
   if (newVisibility === "private" && !art.DriveFileID) {
     throw new Error("這件作品是透過網址匯入的，原始網址仍可公開存取，無法設為私人");
@@ -925,7 +1057,7 @@ function handleUpdateVisibility_(body) {
   const rowNum = findRowByValue_(artworksSheet, "ID", artworkId);
   if (rowNum === -1) throw new Error("找不到這件作品");
 
-  const update = { Visibility: newVisibility, AllowStory: newAllowStory, VisibilityUpdatedAt: new Date() };
+  const update = { Visibility: newVisibility, VisibilityUpdatedAt: new Date() };
   let needsManualPublish = false;
 
   if (art.DriveFileID) {
@@ -995,369 +1127,11 @@ function handleComments_(artworkId) {
 }
 
 /* =========================================================================
-   故事接龍投票（每班獨立輪次 / 候選 / 結算 / 榮譽榜）
+   共用：台北時區位移（AI 額度的每日重置計算會用到）
    ========================================================================= */
 
 const TAIPEI_OFFSET_MS = 8 * 3600 * 1000;
 
-function getNextRolloverIso_(fromDate, hour) {
-  const taipeiMs = fromDate.getTime() + TAIPEI_OFFSET_MS;
-  const t = new Date(taipeiMs);
-  const y = t.getUTCFullYear(), m = t.getUTCMonth(), d = t.getUTCDate();
-  let candidateUtcMs = Date.UTC(y, m, d, hour, 0, 0) - TAIPEI_OFFSET_MS;
-  if (candidateUtcMs <= fromDate.getTime()) candidateUtcMs += 24 * 3600 * 1000;
-  return new Date(candidateUtcMs).toISOString();
-}
-
-function getStoryRoundsAll_() { return sheetToObjects_(getSheet_(CONFIG.SHEET_STORY_ROUNDS)); }
-function getStoryVotesAll_() { return sheetToObjects_(getSheet_(CONFIG.SHEET_STORY_VOTES)); }
-function getHonorBoardAll_() { return sheetToObjects_(getSheet_(CONFIG.SHEET_HONOR_BOARD)); }
-
-function findOpenRoundForClass_(className) {
-  const rounds = getStoryRoundsAll_();
-  const open = rounds.filter((r) => String(r.ClassName) === String(className) && String(r.Status) === "open");
-  if (!open.length) return null;
-  // 理論上每班同時只會有一個 open round；若異常出現多筆，取最新開的那筆
-  open.sort((a, b) => new Date(b.StartedAt) - new Date(a.StartedAt));
-  return open[0];
-}
-
-function classAlreadyHonoredArtworkIds_(className) {
-  const rows = getHonorBoardAll_().filter((r) => String(r.ClassName) === String(className));
-  return new Set(rows.map((r) => String(r.ArtworkID)));
-}
-
-/** 若該班沒有進行中的輪次，且還有可用素材，就開新的一輪；回傳目前（可能剛開好的）open round，
- *  素材不足時回傳 null。 */
-function ensureRoundForClass_(className) {
-  const existing = findOpenRoundForClass_(className);
-  if (existing) return existing;
-
-  const settings = getSettings_();
-  const already = classAlreadyHonoredArtworkIds_(className);
-  const pool = getArtworksAll_().filter((a) =>
-    String(a.ClassName) === String(className) &&
-    parseBoolean_(a.Approved) &&
-    normalizeVisibility_(a.Visibility) === "public" &&
-    parseBoolean_(a.AllowStory) &&
-    !already.has(String(a.ID))
-  );
-  if (!pool.length) return null;
-
-  const perRound = settingNum_(settings, "STORY_CANDIDATES_PER_ROUND");
-  const candidates = shuffle_(pool).slice(0, Math.max(1, perRound)).map((a) => String(a.ID));
-
-  const roundsSheet = getSheet_(CONFIG.SHEET_STORY_ROUNDS);
-  const roundId = uuid_();
-  const now = new Date();
-  appendObjectRow_(roundsSheet, {
-    RoundID: roundId,
-    ClassName: className,
-    Status: "open",
-    CandidateIDsJSON: JSON.stringify(candidates),
-    StartedAt: now,
-    EndsAt: "",
-    ClosedAt: "",
-  });
-  return { RoundID: roundId, ClassName: className, Status: "open", CandidateIDsJSON: JSON.stringify(candidates), StartedAt: now.toISOString() };
-}
-
-/** 結算某班目前進行中的輪次：計票、依規則決定名次、寫入榮譽榜、關閉輪次，然後嘗試開下一輪。
- *  同票規則：Votes desc → 作品 Timestamp asc → ArtworkID asc（結果固定，不含隨機成份）。 */
-function finalizeRoundForClass_(className) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    const round = findOpenRoundForClass_(className);
-    if (!round) { ensureRoundForClass_(className); return; }
-
-    const candidateIds = JSON.parse(round.CandidateIDsJSON || "[]").map(String);
-    const votes = getStoryVotesAll_().filter((v) => String(v.RoundID) === String(round.RoundID));
-    const voteCount = {};
-    candidateIds.forEach((id) => { voteCount[id] = 0; });
-    votes.forEach((v) => {
-      const id = String(v.ArtworkID);
-      if (Object.prototype.hasOwnProperty.call(voteCount, id)) voteCount[id] += 1;
-    });
-
-    const artworksById = {};
-    getArtworksAll_().forEach((a) => { artworksById[String(a.ID)] = a; });
-
-    const ranked = candidateIds
-      .filter((id) => artworksById[id])
-      .sort((a, b) => {
-        if (voteCount[b] !== voteCount[a]) return voteCount[b] - voteCount[a];
-        const ta = new Date(artworksById[a].Timestamp).getTime();
-        const tb = new Date(artworksById[b].Timestamp).getTime();
-        if (ta !== tb) return ta - tb;
-        return a < b ? -1 : a > b ? 1 : 0;
-      });
-
-    const top3 = ranked.slice(0, 3);
-    const honorSheet = getSheet_(CONFIG.SHEET_HONOR_BOARD);
-    const closedAt = new Date();
-    top3.forEach((id, i) => {
-      appendObjectRow_(honorSheet, {
-        RoundID: round.RoundID,
-        ClassName: className,
-        Rank: i + 1,
-        ArtworkID: id,
-        Votes: voteCount[id] || 0,
-        ClosedAt: closedAt,
-      });
-    });
-
-    const roundsSheet = getSheet_(CONFIG.SHEET_STORY_ROUNDS);
-    const rowNum = findRowByValue_(roundsSheet, "RoundID", round.RoundID);
-    if (rowNum !== -1) updateObjectRow_(roundsSheet, rowNum, { Status: "closed", ClosedAt: closedAt });
-
-    ensureRoundForClass_(className);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function finalizeAllOpenRounds_() {
-  const classNames = Array.from(new Set(sheetToObjects_(getSheet_(CONFIG.SHEET_USERS)).map((u) => String(u.ClassName).trim()).filter(Boolean)));
-  classNames.forEach((cn) => {
-    try { finalizeRoundForClass_(cn); } catch (e) { Logger.log("結算「" + cn + "」失敗：" + e.message); }
-  });
-}
-
-function buildRoundPayload_(round, user) {
-  if (!round) return null;
-  const settings = getSettings_();
-  const candidateIds = JSON.parse(round.CandidateIDsJSON || "[]").map(String);
-  const artworksById = {};
-  getArtworksAll_().forEach((a) => { artworksById[String(a.ID)] = a; });
-
-  const votes = getStoryVotesAll_().filter((v) => String(v.RoundID) === String(round.RoundID));
-  const voteCount = {};
-  candidateIds.forEach((id) => { voteCount[id] = 0; });
-  votes.forEach((v) => {
-    const id = String(v.ArtworkID);
-    if (Object.prototype.hasOwnProperty.call(voteCount, id)) voteCount[id] += 1;
-  });
-  const myVote = votes.find((v) => String(v.UserID) === String(user.UserID));
-
-  const candidates = candidateIds
-    .map((id) => artworksById[id])
-    .filter(Boolean)
-    .map((a) => {
-      const pub = sanitizeArtworkPublic_(a); // 重用畫廊那套「自己 Drive 連結要清空走代理」的處理
-      return {
-        artworkId: String(a.ID),
-        nickname: a.Nickname || a.StudentName || "匿名",
-        imageUrl: pub.ImageURL,
-        needsProxy: pub.needsProxy,
-        voteCount: voteCount[String(a.ID)] || 0,
-        isMine: String(a.OwnerUserID) === String(user.UserID),
-      };
-    });
-
-  return {
-    roundId: round.RoundID,
-    startedAt: round.StartedAt,
-    estimatedEndsAt: getNextRolloverIso_(new Date(round.StartedAt), settingNum_(settings, "STORY_DAILY_ROLLOVER_HOUR")),
-    candidates,
-    myVoteArtworkId: myVote ? String(myVote.ArtworkID) : "",
-  };
-}
-
-function buildHonorBoardPayload_(className) {
-  const rows = getHonorBoardAll_().filter((r) => String(r.ClassName) === String(className));
-  const artworksById = {};
-  getArtworksAll_().forEach((a) => { artworksById[String(a.ID)] = a; });
-
-  const byRound = {};
-  rows.forEach((r) => {
-    const key = String(r.RoundID);
-    if (!byRound[key]) byRound[key] = { roundId: key, closedAt: r.ClosedAt, entries: [] };
-    const art = artworksById[String(r.ArtworkID)];
-    const pub = art ? sanitizeArtworkPublic_(art) : null;
-    byRound[key].entries.push({
-      rank: Number(r.Rank),
-      artworkId: String(r.ArtworkID),
-      votes: Number(r.Votes),
-      nickname: art ? (art.Nickname || art.StudentName || "匿名") : "（作品已不存在）",
-      imageUrl: pub ? pub.ImageURL : "",
-      needsProxy: pub ? pub.needsProxy : false,
-    });
-  });
-
-  return Object.values(byRound)
-    .sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt))
-    .slice(0, 12)
-    .map((r) => Object.assign({}, r, { entries: r.entries.sort((a, b) => a.rank - b.rank) }));
-}
-
-function handleStoryGetRound_(body) {
-  const user = requireActiveUser_(body);
-  const round = ensureRoundForClass_(user.ClassName);
-  return jsonOut_({
-    round: buildRoundPayload_(round, user),
-    honorBoard: buildHonorBoardPayload_(user.ClassName),
-  });
-}
-
-function handleStoryGetHonorBoard_(body) {
-  const user = requireActiveUser_(body);
-  return jsonOut_({ honorBoard: buildHonorBoardPayload_(user.ClassName) });
-}
-
-function handleStoryVote_(body) {
-  const user = requireActiveUser_(body);
-  const artworkId = String(body.artworkId || "");
-
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    const round = findOpenRoundForClass_(user.ClassName);
-    if (!round) throw new Error("目前沒有進行中的投票輪次");
-    const candidateIds = JSON.parse(round.CandidateIDsJSON || "[]").map(String);
-
-    if (artworkId) {
-      if (!candidateIds.includes(artworkId)) throw new Error("這一輪投票已經結束囉，頁面即將更新，請重新整理再投一次");
-      const art = getArtworksAll_().find((a) => String(a.ID) === artworkId);
-      if (art && String(art.OwnerUserID) === String(user.UserID)) throw new Error("不能投給自己的作品");
-    }
-
-    const votesSheet = getSheet_(CONFIG.SHEET_STORY_VOTES);
-    const existing = rowsWithLineNumbers_(votesSheet).find(
-      (r) => String(r.obj.RoundID) === String(round.RoundID) && String(r.obj.UserID) === String(user.UserID)
-    );
-
-    if (!existing) {
-      if (artworkId) {
-        appendObjectRow_(votesSheet, { RoundID: round.RoundID, UserID: user.UserID, ArtworkID: artworkId, UpdatedAt: new Date() });
-      }
-    } else if (artworkId) {
-      updateObjectRow_(votesSheet, existing.rowNum, { ArtworkID: artworkId, UpdatedAt: new Date() });
-    } else {
-      votesSheet.deleteRow(existing.rowNum); // 收回投票
-    }
-
-    return jsonOut_({ success: true, round: buildRoundPayload_(round, user) });
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/* 🔧 老師手動結算（在 Apps Script 編輯器函式選單執行）*/
-function advanceStoryRoundForClass(className) { finalizeRoundForClass_(className); }
-function advanceAllStoryRounds() { finalizeAllOpenRounds_(); }
-
-function dailyStoryRollover() { finalizeAllOpenRounds_(); }
-
-function installDailyStoryTrigger() {
-  ScriptApp.getProjectTriggers().forEach((t) => {
-    if (t.getHandlerFunction() === "dailyStoryRollover") ScriptApp.deleteTrigger(t);
-  });
-  const settings = getSettings_();
-  ScriptApp.newTrigger("dailyStoryRollover")
-    .timeBased()
-    .atHour(settingNum_(settings, "STORY_DAILY_ROLLOVER_HOUR"))
-    .everyDays(1)
-    .create();
-  Logger.log("✅ 已安裝每日故事接龍自動結算 trigger（Asia/Taipei，請確認專案時區設定正確）");
-}
-
-/**
- * 🔧 老師專用（選用功能，預設不會自動執行）：清理「AI 產圖但一直維持私人狀態」超過
- * Settings.STALE_PRIVATE_AI_DAYS 天（預設 60 天）的作品——同時刪除 Google Drive 上的
- * 原始檔案與 Artworks 分頁裡的那一列。
- *
- * 刻意只清理 Source="OpenAI" 的作品，不動任何「使用者自己上傳/網址匯入」的私人作品——
- * 因為 AI 測試圖大多是隨手產生、忘記處理的暫存內容，但使用者自己上傳的私人作品可能是
- * 特意想保留、不想公開的東西，不應該被系統自動刪除。
- *
- * 這個函式預設不會自動執行；要啟用請執行一次 installStaleImageCleanupTrigger()。
- * 也可以隨時手動執行 cleanupStalePrivateAiArtworks() 立即清一次。
- */
-/**
- * 🔧 老師專用：一鍵核准所有「因為 Drive 分享設定失敗而被標記為審核中」的作品
- * （`NeedsManualPublish=TRUE` 的那些列）。因為畫面顯示本來就是靠後端代理讀取（不依賴
- * Drive 分享設定成不成功），這些作品的圖片其實都已經能正常顯示，只是卡在「等老師按下
- * 核准」這一步——這個函式就是幫你一次按完全部。
- *
- * 執行後會把符合條件的列一次改成 Approved=TRUE、NeedsManualPublish=FALSE（清掉標記，
- * 代表已經處理過）。可以安全重複執行，沒有符合條件的列就不會動。
- */
-function approveAllNeedsManualPublish() {
-  const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
-  const rows = rowsWithLineNumbers_(sheet);
-  let count = 0;
-  rows.forEach(({ rowNum, obj }) => {
-    if (parseBoolean_(obj.NeedsManualPublish) && !parseBoolean_(obj.Approved)) {
-      updateObjectRow_(sheet, rowNum, { Approved: true, NeedsManualPublish: false });
-      count++;
-    }
-  });
-  invalidateCache_(CONFIG.SHEET_ARTWORKS);
-  Logger.log(`✅ 已核准 ${count} 件原本卡在「審核中」的作品`);
-  return { success: true, count };
-}
-
-function cleanupStalePrivateAiArtworks() {
-  const settings = getSettings_();
-  const days = settingNum_(settings, "STALE_PRIVATE_AI_DAYS");
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-  const sheet = getSheet_(CONFIG.SHEET_ARTWORKS);
-  const rows = rowsWithLineNumbers_(sheet);
-  let deletedCount = 0;
-
-  // 從後面往前刪，避免刪除中間列造成後續列號位移的問題
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const { rowNum, obj: art } = rows[i];
-    if (normalizeVisibility_(art.Visibility) !== "private") continue;
-    if (String(art.Source) !== "OpenAI") continue;
-    const ts = new Date(art.Timestamp);
-    if (isNaN(ts.getTime()) || ts > cutoff) continue;
-
-    if (art.DriveFileID) {
-      try { Drive.Files.update({ trashed: true }, art.DriveFileID); } catch (e) { /* 檔案可能已經被手動刪除，忽略 */ }
-    }
-    sheet.deleteRow(rowNum);
-    deletedCount++;
-  }
-
-  invalidateCache_(CONFIG.SHEET_ARTWORKS);
-  Logger.log(`✅ 清理完成：刪除了 ${deletedCount} 件超過 ${days} 天仍維持私人狀態的 AI 產圖`);
-  return { success: true, deletedCount, days };
-}
-
-/** 啟用「每日自動清理過期私人 AI 產圖」（選用；不啟用的話 cleanupStalePrivateAiArtworks 只能手動執行）。
- *  可安全重複執行，會先移除舊的同名 trigger 再重新安裝，不會裝兩份。 */
-function installStaleImageCleanupTrigger() {
-  ScriptApp.getProjectTriggers().forEach((t) => {
-    if (t.getHandlerFunction() === "cleanupStalePrivateAiArtworks") ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger("cleanupStalePrivateAiArtworks").timeBased().everyDays(1).atHour(3).create();
-  Logger.log("✅ 已安裝每日自動清理過期私人 AI 產圖的 trigger（每天凌晨 3 點執行一次）");
-}
-
-/** 🔧 老師專用：重置指定班級（或傳入空字串／不傳參數＝全部班級）的故事接龍狀態。
- *  只清除 StoryRounds / StoryVotes / HonorBoard，不動舊版 StoryChain（保留為 archive），
- *  也完全不影響 Artworks 本身。 */
-function resetStoryForClass(className) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    const roundsSheet = getSheet_(CONFIG.SHEET_STORY_ROUNDS);
-    const votesSheet = getSheet_(CONFIG.SHEET_STORY_VOTES);
-    const honorSheet = getSheet_(CONFIG.SHEET_HONOR_BOARD);
-
-    deleteRowsWhere_(roundsSheet, "ClassName", className);
-    deleteRowsWhere_(votesSheet, null, null); // StoryVotes 沒有 ClassName 欄位，靠 RoundID 對應太複雜，全部清空即可（票數本來就只在單一輪次內有意義）
-    deleteRowsWhere_(honorSheet, "ClassName", className);
-
-    Logger.log("✅ 已重置故事接龍狀態：" + (className || "全部班級"));
-  } finally {
-    lock.releaseLock();
-  }
-}
-function resetAllStory() { resetStoryForClass(""); }
 
 /** 刪除某分頁中符合條件的資料列（colName 為 null 時代表清空全部資料列，保留表頭） */
 function deleteRowsWhere_(sheet, colName, matchValue) {
@@ -1881,9 +1655,8 @@ const POST_ACTIONS = {
   "like": handleLike_,
   "comment": handleComment_,
 
-  "story/getRound": handleStoryGetRound_,
-  "story/vote": handleStoryVote_,
-  "story/getHonorBoard": handleStoryGetHonorBoard_,
+  "submitBook": handleSubmitBook_,
+  "artwork/delete": handleArtworkDelete_,
 
   "books/list": handleBooksList_,
   "books/get": handleBooksGet_,
@@ -1958,10 +1731,8 @@ function setupOrMigrate() {
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_ARTWORKS, ARTWORK_HEADERS);
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_USERS, USER_HEADERS);
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_COMMENTS, COMMENT_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_CHAIN, STORY_CHAIN_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_ROUNDS, STORY_ROUNDS_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_VOTES, STORY_VOTES_HEADERS);
-  ensureSheetWithHeaders_(ss, CONFIG.SHEET_HONOR_BOARD, HONOR_BOARD_HEADERS);
+  // 投票功能已移除，StoryChain / StoryRounds / StoryVotes / HonorBoard 這四個分頁
+  // 不再建立也不再寫入。既有的分頁不會自動刪除（保留資料），要清掉請執行 deleteUnusedSheets()。
   ensureSheetWithHeaders_(ss, CONFIG.SHEET_STORY_BOOKS, STORY_BOOKS_HEADERS);
   const aiUsageSheet = ensureSheetWithHeaders_(ss, CONFIG.SHEET_AI_USAGE, AI_USAGE_HEADERS);
   repairAIUsageDateKeys_(aiUsageSheet);
@@ -1995,14 +1766,15 @@ function setupOrMigrate() {
   });
 
   // 既有 Artworks 若是舊格式，補上新欄位的合理預設值：沒有 OwnerUserID 代表是舊資料，
-  // 一律視為 public（維持「舊資料相容」，畫廊照常顯示），AllowStory 預設允許（維持舊行為）。
+  // 一律視為 public（維持「舊資料相容」，畫廊照常顯示），並補上 Kind="image"。
   const artworksSheet = getSheet_(CONFIG.SHEET_ARTWORKS);
   const artRows = rowsWithLineNumbers_(artworksSheet);
   artRows.forEach(({ rowNum, obj: row }) => {
     const patch = {};
     if (row.Visibility === "" || row.Visibility === undefined) patch.Visibility = "public";
-    if (row.AllowStory === "" || row.AllowStory === undefined) patch.AllowStory = true;
     if (row.Source === "" || row.Source === undefined) patch.Source = "User";
+    // 舊資料一律視為圖片作品（故事本是這次才新增的類型）
+    if (row.Kind === "" || row.Kind === undefined) patch.Kind = "image";
     if (Object.keys(patch).length) updateObjectRow_(artworksSheet, rowNum, patch);
   });
 
@@ -2066,4 +1838,46 @@ function setAllUsersResetHour() {
   const msg = "✅ 已把 " + changed + " 個帳號的重置時間改成每天 " + NEW_RESET_HOUR + ":59:59（共 " + rows.length + " 個帳號）。";
   Logger.log(msg);
   return { success: true, changed: changed, total: rows.length, resetHour: NEW_RESET_HOUR };
+}
+
+/* =========================================================================
+   老師用的小工具：刪掉投票功能留下來、現在已經用不到的分頁
+   -------------------------------------------------------------------------
+   ⚠️ 這個動作會**永久刪除**整個分頁與裡面的資料，無法復原。
+   建議先「檔案 → 建立副本」備份整份 Sheet，再執行這個函式。
+
+   會刪除的四個分頁（全部都只有投票功能在用，刪掉不影響畫廊、投稿、AI 作圖、
+   故事本、留言、額度等任何其他功能）：
+     - StoryRounds  投票輪次
+     - StoryVotes   每一票的紀錄
+     - HonorBoard   歷屆榮譽榜
+     - StoryChain   更早期的舊版故事接龍，程式碼裡早就標記為「不再寫入」
+
+   刻意「不」刪除的分頁（還有功能在用，刪了會壞）：
+     - Artworks         所有作品（圖片 + 故事本）
+     - AuthorizedUsers  帳號與權限
+     - StoryBooks       故事接龍頁的故事本草稿
+     - AIUsage          AI 每日額度計數
+     - Settings         各種設定值
+     - Comments         留言功能（目前前端沒有入口，但後端仍保留 API；
+                        確定不做留言功能的話可以自己手動刪掉這一個）
+   ========================================================================= */
+function deleteUnusedSheets() {
+  const OBSOLETE = ["StoryRounds", "StoryVotes", "HonorBoard", "StoryChain"];
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const deleted = [];
+  const notFound = [];
+
+  OBSOLETE.forEach((name) => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet) { notFound.push(name); return; }
+    ss.deleteSheet(sheet);
+    deleted.push(name);
+  });
+
+  const msg = "✅ 已刪除分頁：" + (deleted.join("、") || "（無）") +
+    "；本來就不存在：" + (notFound.join("、") || "（無）");
+  Logger.log(msg);
+  return { success: true, deleted: deleted, notFound: notFound };
 }

@@ -412,9 +412,14 @@ function initAiPage(root, user) {
     if (limit > 0 && pct >= 0.7 && used < limit) {
       warning = `<p style="color:#a8402f;font-weight:600;margin-top:8px;">你已使用超過今日額度的 70%。請好好打字，系統性、有條理地告訴 AI 你的想法，先想清楚再產生圖片喔！</p>`;
     }
-    const countInfo = myArtworkCount === null
-      ? ""
-      : `<p style="margin-top:6px;">目前作品數：<b>${myArtworkCount} / ${CONFIG.MAX_ARTWORKS_PER_USER}</b> 件</p>`;
+    let countInfo = "";
+    if (myArtworkCount !== null) {
+      const nearLimit = myArtworkCount >= CONFIG.WARN_ARTWORKS_AT;
+      countInfo = `<p style="margin-top:6px;">目前圖片作品數：<b${nearLimit ? ' style="color:#a8402f;"' : ""}>${myArtworkCount} / ${CONFIG.MAX_ARTWORKS_PER_USER}</b> 張</p>`;
+      if (nearLimit && myArtworkCount < CONFIG.MAX_ARTWORKS_PER_USER) {
+        countInfo += `<p style="color:#a8402f;font-weight:600;margin-top:4px;">⚠️ 作品數快到上限了，建議先到「我的頁面」刪掉一些不需要的作品。</p>`;
+      }
+    }
     quotaBanner.innerHTML = `
       <h3>📊 今日額度</h3>
       <p>今日已用 <b>${used} / ${limit}</b> 次，下次重置時間：${escapeHtml(nextReset)}</p>
@@ -437,7 +442,8 @@ function initAiPage(root, user) {
   async function loadMyArtworkCount() {
     try {
       const res = await Api.listMine();
-      myArtworkCount = (res.artworks || []).length;
+      // 只算圖片作品，上傳的故事本 PDF 有自己獨立的上限
+      myArtworkCount = (res.artworks || []).filter((a) => a.Kind !== "book").length;
       if (latestQuota) renderQuota(latestQuota);
       return myArtworkCount;
     } catch (err) {
@@ -461,7 +467,7 @@ function initAiPage(root, user) {
     // 產圖前先確認作品數：達到上限就不送出，請使用者先去「我的頁面」刪掉一些
     const count = await loadMyArtworkCount();
     if (count !== null && count >= CONFIG.MAX_ARTWORKS_PER_USER) {
-      const err = new Error(`你目前已經有 ${count} 件作品（上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 件），請先刪除一些作品再來產圖吧！`);
+      const err = new Error(`你目前已經有 ${count} 張圖片作品（上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 張），請先到「我的頁面」刪除一些作品再來產圖吧！`);
       err.isArtworkLimit = true;
       throw err;
     }
@@ -743,40 +749,4 @@ function ensureAiResultModal() {
   });
 
   return overlay;
-}
-
-/** 把 data: URI 轉成 PNG 檔並觸發下載（來源不是 PNG 時用 canvas 轉一次） */
-function downloadDataUrlAsPng(dataUrl, filename) {
-  return new Promise((resolve, reject) => {
-    const triggerDownload = (href) => {
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      resolve();
-    };
-
-    if (dataUrl.startsWith("data:image/png")) {
-      triggerDownload(dataUrl);
-      return;
-    }
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext("2d").drawImage(img, 0, 0);
-        triggerDownload(canvas.toDataURL("image/png"));
-      } catch (e) {
-        reject(new Error("圖片轉檔失敗"));
-      }
-    };
-    img.onerror = () => reject(new Error("圖片讀取失敗"));
-    img.src = dataUrl;
-  });
 }

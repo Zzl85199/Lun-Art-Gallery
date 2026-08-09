@@ -136,14 +136,16 @@ const Api = {
   },
   listMine() { return this._post({ action: "listMine" }); },
   materialLibrary() { return this._post({ action: "materialLibrary" }); },
-  updateVisibility(artworkId, visibility, allowStory) {
-    return this._post({ action: "updateVisibility", artworkId, visibility, allowStory });
+  updateVisibility(artworkId, visibility) {
+    return this._post({ action: "updateVisibility", artworkId, visibility });
   },
 
   /* ---------------- 故事接龍 ---------------- */
-  storyGetRound() { return this._post({ action: "story/getRound" }); },
-  storyVote(artworkId) { return this._post({ action: "story/vote", artworkId: artworkId || "" }); },
-  storyGetHonorBoard() { return this._post({ action: "story/getHonorBoard" }); },
+  /** 上傳故事本 PDF（fileBase64 不含 data: 前綴） */
+  submitBook(payload) { return this._post({ action: "submitBook", ...payload }); },
+
+  /** 刪除自己的作品（圖片或故事本）；Drive 上的檔案會移到垃圾桶 */
+  deleteArtwork(artworkId) { return this._post({ action: "artwork/delete", artworkId }); },
 
   /* ---------------- 我的故事本 ---------------- */
   booksList() { return this._post({ action: "books/list" }); },

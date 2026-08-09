@@ -494,3 +494,62 @@ async function handleCommentSubmit(e) {
     submitBtn.disabled = false;
   }
 }
+
+/* =========================================================================
+   檔案下載 / 讀取（AI 作圖的結果視窗、我的頁面的下載按鈕共用）
+   ========================================================================= */
+
+/** 建一個隱形的 <a download> 並按下去 */
+function triggerFileDownload(href, filename) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+/** 把 data: URI 轉成 PNG 檔並觸發下載（來源不是 PNG 時用 canvas 轉一次） */
+function downloadDataUrlAsPng(dataUrl, filename) {
+  return new Promise((resolve, reject) => {
+    if (dataUrl.startsWith("data:image/png")) {
+      triggerFileDownload(dataUrl, filename);
+      resolve();
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+        triggerFileDownload(canvas.toDataURL("image/png"), filename);
+        resolve();
+      } catch (e) {
+        // 跨網域圖片會讓 canvas 被污染而無法匯出，這時直接下載原檔
+        triggerFileDownload(dataUrl, filename);
+        resolve();
+      }
+    };
+    img.onerror = () => reject(new Error("圖片讀取失敗"));
+    img.src = dataUrl;
+  });
+}
+
+/** 讀取使用者選的檔案，回傳 { base64, mimeType }（base64 不含 data: 前綴） */
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      if (comma === -1) { reject(new Error("檔案格式錯誤")); return; }
+      resolve({ base64: result.slice(comma + 1), mimeType: file.type || "application/octet-stream" });
+    };
+    reader.onerror = () => reject(new Error("檔案讀取失敗"));
+    reader.readAsDataURL(file);
+  });
+}

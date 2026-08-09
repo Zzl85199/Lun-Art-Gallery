@@ -6,211 +6,25 @@ document.addEventListener("DOMContentLoaded", () => {
   Auth.requireActive(gateEl, (user) => initStoryPage(gateEl, user));
 });
 
-const RANK_MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
 const MAX_BOOKS_HINT = 3; // 僅供 UI 顯示，實際上限由後端 Settings 分頁決定
 
 function initStoryPage(root, user) {
   root.innerHTML = `
-    <section class="board-section cork-bg" style="padding-top:0;">
-      <h2 class="board-heading" style="font-size:1.6rem;">🗳️ 本班作品票選（${escapeHtml(user.className)}）</h2>
-      <p style="text-align:center;color:#5b4f3f;" id="round-countdown"></p>
-      <div id="round-body"></div>
-    </section>
+    <section class="board-section my-story-section" style="padding-top:0;">
+      <h2 class="board-heading my-story-heading" style="font-size:1.5rem;">🖼️ 素材庫</h2>
+      <p style="text-align:center;color:#6b5f4c;margin-top:-14px;">點作品右上角的 ＋ 就能加進下面目前選中的故事本。</p>
+      <div id="pool-filter-mount"></div>
+      <div class="my-story-pool" id="my-story-pool"><p style="color:#8a7d68;">載入中...</p></div>
 
-    <section class="board-section" style="padding-top:10px;">
-      <h2 class="board-heading" style="font-size:1.4rem;">📊 本輪即時票況</h2>
-      <div id="live-standings"></div>
-      <h3 style="text-align:center;font-family:var(--font-hand);margin-top:30px;">🏆 本班歷屆榮譽榜</h3>
-      <div id="honor-board"></div>
-    </section>
-
-    <svg class="wave-divider" viewBox="0 0 1200 44" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(180deg);">
-      <path d="M0,20 C150,44 300,0 450,20 C600,40 750,4 900,22 C1050,40 1150,10 1200,20 L1200,44 L0,44 Z" style="fill:var(--cork);"/>
-    </svg>
-
-    <section class="board-section my-story-section">
-      <h2 class="board-heading my-story-heading" style="font-size:1.7rem;">🎨 我的故事本</h2>
-      <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">雲端保存，登入任何裝置都能繼續編輯；完成後可產生列印/PDF 頁面。</p>
+      <h2 class="board-heading my-story-heading" style="font-size:1.7rem;margin-top:44px;">🎨 我的故事本</h2>
+      <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">雲端保存，登入任何裝置都能繼續編輯；完成後可產生列印/PDF 頁面，再到「我的頁面」上傳成故事本。</p>
 
       <div id="book-tabs" class="btn-row" style="justify-content:center;margin:20px 0;"></div>
       <div id="book-editor"></div>
-
-      <h3 style="margin:30px 0 10px;font-family:var(--font-hand);font-size:1.1rem;">🖼️ 素材庫（點擊 ＋ 加入目前的故事本）</h3>
-      <div id="pool-filter-mount"></div>
-      <div class="my-story-pool" id="my-story-pool"><p style="color:#8a7d68;">載入中...</p></div>
     </section>
   `;
 
-  initRoundAndHonorBoard(user);
   initBookEditor(user);
-}
-
-/* ==========================================================================
-   本班作品票選 + 即時票況 + 歷屆榮譽榜
-   ========================================================================== */
-function initRoundAndHonorBoard(user) {
-  const roundBody = document.getElementById("round-body");
-  const countdownEl = document.getElementById("round-countdown");
-  const standingsEl = document.getElementById("live-standings");
-  const honorEl = document.getElementById("honor-board");
-
-  let countdownTimer = null;
-  let voting = false;
-
-  async function load() {
-    try {
-      const res = await Api.storyGetRound();
-      renderRound(res.round);
-      renderHonorBoard(res.honorBoard || []);
-    } catch (err) {
-      roundBody.innerHTML = `<div class="story-msg story-msg-error">載入失敗：${escapeHtml(err.message)}</div>`;
-    }
-  }
-
-  function renderRound(round) {
-    clearInterval(countdownTimer);
-    if (!round || !round.candidates || !round.candidates.length) {
-      roundBody.innerHTML = `<div class="story-msg">目前沒有可以票選的作品。等同班同學投稿「公開」且「允許故事接龍」的作品後，就會自動開新的一輪！</div>`;
-      countdownEl.textContent = "";
-      standingsEl.innerHTML = "";
-      return;
-    }
-
-    const totalVotes = round.candidates.reduce((sum, c) => sum + c.voteCount, 0);
-
-    roundBody.innerHTML = `<div class="story-round-grid">${round.candidates
-      .map((c) => {
-        const pct = totalVotes > 0 ? Math.round((c.voteCount / totalVotes) * 100) : 0;
-        const isMine = c.isMine;
-        const isMyVote = round.myVoteArtworkId === c.artworkId;
-        return `
-          <div class="story-vote-card ${isMyVote ? "is-my-vote" : ""}" data-artwork-id="${escapeHtml(c.artworkId)}">
-            <div class="story-vote-img"><img data-vote-img="${escapeHtml(c.artworkId)}" alt="${escapeHtml(c.nickname)} 的作品" loading="lazy"></div>
-            <div class="story-vote-info"><b>${escapeHtml(c.nickname)}</b></div>
-            <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${pct}%;"></div></div>
-            <div class="vote-count-label">${c.voteCount} 票（${pct}%）</div>
-            ${
-              isMine
-                ? `<div class="form-hint" style="text-align:center;">這是你的作品，不能投給自己</div>`
-                : isMyVote
-                ? `<button class="btn btn-outline-dark vote-btn retract-btn" type="button">❌ 取消這一票</button>`
-                : `<button class="btn btn-pin vote-btn" type="button">投給這張</button>`
-            }
-          </div>
-        `;
-      })
-      .join("")}</div>`;
-
-    roundBody.querySelectorAll("[data-vote-img]").forEach((img) => {
-      const c = round.candidates.find((x) => x.artworkId === img.dataset.voteImg);
-      if (c) Api.setImageSrc(img, { ImageURL: c.imageUrl, needsProxy: c.needsProxy, ID: c.artworkId });
-    });
-
-    roundBody.querySelectorAll(".vote-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const card = e.target.closest(".story-vote-card");
-        castVote(btn.classList.contains("retract-btn") ? "" : card.dataset.artworkId);
-      });
-    });
-
-    // 簡化版即時票況：沿用同一份候選資料，依票數排序
-    const ranked = [...round.candidates].sort((a, b) => b.voteCount - a.voteCount);
-    standingsEl.innerHTML = `
-      <div class="standings-list">
-        ${ranked
-          .map(
-            (c, i) => `
-          <div class="standings-row">
-            <span class="standings-rank">${RANK_MEDALS[i + 1] || i + 1}</span>
-            <img class="standings-thumb" data-standings-img="${escapeHtml(c.artworkId)}" alt="${escapeHtml(c.nickname)}">
-            <span class="standings-name">${escapeHtml(c.nickname)}${round.myVoteArtworkId === c.artworkId ? "（你投的）" : ""}</span>
-            <span class="standings-votes">${c.voteCount} 票 · ${totalVotes > 0 ? Math.round((c.voteCount / totalVotes) * 100) : 0}%</span>
-          </div>
-        `
-          )
-          .join("")}
-      </div>
-    `;
-
-    standingsEl.querySelectorAll("[data-standings-img]").forEach((img) => {
-      const c = round.candidates.find((x) => x.artworkId === img.dataset.standingsImg);
-      if (c) Api.setImageSrc(img, { ImageURL: c.imageUrl, needsProxy: c.needsProxy, ID: c.artworkId });
-    });
-
-    startCountdown(round.estimatedEndsAt);
-  }
-
-  function startCountdown(endsAtIso) {
-    if (!endsAtIso) { countdownEl.textContent = ""; return; }
-    const endsAt = new Date(endsAtIso).getTime();
-    function tick() {
-      const remain = endsAt - Date.now();
-      if (remain <= 0) {
-        countdownEl.textContent = "⏳ 已經過了預計結算時間，正在等待老師或系統結算，頁面會自動更新...";
-        clearInterval(countdownTimer);
-        return;
-      }
-      const h = Math.floor(remain / 3600000);
-      const m = Math.floor((remain % 3600000) / 60000);
-      const s = Math.floor((remain % 60000) / 1000);
-      countdownEl.textContent = `⏳ 預計還有 ${h} 小時 ${m} 分 ${s} 秒結算這一輪（老師也可能提早手動結算）`;
-    }
-    tick();
-    countdownTimer = setInterval(tick, 1000);
-  }
-
-  function renderHonorBoard(rounds) {
-    if (!rounds.length) {
-      honorEl.innerHTML = `<p style="text-align:center;color:#8a7d68;">還沒有結算過任何一輪，第一輪結算後榮譽榜就會出現在這裡！</p>`;
-      return;
-    }
-    honorEl.innerHTML = rounds
-      .map(
-        (r) => `
-        <div class="honor-round">
-          <div class="honor-round-date">${new Date(r.closedAt).toLocaleDateString("zh-TW")}</div>
-          <div class="honor-round-entries">
-            ${r.entries
-              .map(
-                (e) => `
-              <div class="honor-entry">
-                <span class="honor-rank">${RANK_MEDALS[e.rank] || e.rank}</span>
-                ${e.imageUrl || e.needsProxy ? `<img data-honor-img="${escapeHtml(e.artworkId)}" alt="${escapeHtml(e.nickname)}">` : ""}
-                <span class="honor-name">${escapeHtml(e.nickname)}</span>
-                <span class="honor-votes">${e.votes} 票</span>
-              </div>
-            `
-              )
-              .join("")}
-          </div>
-        </div>
-      `
-      )
-      .join("");
-
-    const allEntries = rounds.flatMap((r) => r.entries);
-    honorEl.querySelectorAll("[data-honor-img]").forEach((img) => {
-      const e = allEntries.find((x) => x.artworkId === img.dataset.honorImg);
-      if (e) Api.setImageSrc(img, { ImageURL: e.imageUrl, needsProxy: e.needsProxy, ID: e.artworkId });
-    });
-  }
-
-  async function castVote(artworkId) {
-    if (voting) return;
-    voting = true;
-    try {
-      const res = await Api.storyVote(artworkId);
-      renderRound(res.round);
-    } catch (err) {
-      alert("投票失敗：" + err.message + "\n頁面即將重新整理資料。");
-      await load();
-    } finally {
-      voting = false;
-    }
-  }
-
-  load();
-  createPoller(load, 8000); // 5~10 秒輪詢，分頁背景時自動暫停
 }
 
 /* ==========================================================================

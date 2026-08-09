@@ -5,8 +5,7 @@
 
 v2 新增：Google 登入（Google Identity Services）、後端驗證 ID Token、簽章 session
 token、圖片直接上傳 Google Drive（含公開/僅畫廊/私人三種可見度）、每班獨立的故事
-接龍投票與榮譽榜、雲端保存可跨裝置的故事本、AI 作圖（OpenAI Images API）與每日
-額度。舊資料與舊版 Sheet 欄位完全相容，`setupOrMigrate()` 只會新增缺少的欄位/分
+雲端保存可跨裝置的故事本、AI 作圖（OpenAI Images API）與每日額度。舊資料與舊版 Sheet 欄位完全相容，`setupOrMigrate()` 只會新增缺少的欄位/分
 頁，不會刪除或覆蓋既有資料。
 
 ---
@@ -88,7 +87,7 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 `UserID, GoogleSub, Email, StudentName, Nickname, ClassName, Role, Status, ArtworkAutoApprove, QuotaMode, QuotaLimit, ResetHour, SessionVersion, CreatedAt, ApprovedAt, CharacterSheet`
 
 - **老師唯一需要手動編輯的分頁**。新帳號申請後 `Status` 會是 `Pending`，老師改成
-  `Active` 才能使用受保護功能（投稿、故事接龍、AI 作圖、故事本）；改成
+  `Active` 才能使用受保護功能（投稿、AI 作圖、故事本）；改成
   `Disabled`／`Suspended`／其他非 `Active` 值都會被擋下。`Status` 欄有下拉選單
   （`Pending/Active/Disabled/Suspended/Inactive`），但仍可直接打字打入清單外的
   文字，不會被拒絕。
@@ -108,13 +107,18 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 
 ### Artworks（在舊欄位上新增）
 舊欄位不變：`ID, Timestamp, StudentName, ClassName, ImageURL, DriveBackupURL, Prompt, Description, AITool, Tags, Likes, Approved`
-新增：`OwnerUserID, Nickname, DriveFileID, Visibility, AllowStory, Source, NeedsManualPublish, VisibilityUpdatedAt`
+新增：`OwnerUserID, Nickname, DriveFileID, Visibility, AllowStory, Source, NeedsManualPublish, VisibilityUpdatedAt, Kind, Title`
 
-- `Visibility`：`public`（公開，可進畫廊/故事接龍/被他人放進故事本）、
-  `gallery_only`（只在畫廊顯示，不可票選/不可被他人取用）、`private`（私人，只
-  有本人登入可見，可放進自己的故事本）。
+- `Kind`：`image`（圖片作品，預設值）或 `book`（學生上傳的故事本 PDF）。這兩種
+  東西都放在 Artworks 分頁，用這一欄區分；舊資料一律視為 `image`。
+- `Title`：只有故事本會用到（學生上傳時填的故事本名稱），圖片作品留空。
+- `AllowStory`：**已停用**。投票功能移除後這一欄不再有任何作用，保留只是為了不
+  破壞既有資料，可以忽略。
+- `Visibility`：`public`（公開，進畫廊、可被他人放進故事本素材庫）、
+  `gallery_only`（只在畫廊顯示，不可被他人取用）、`private`（私人，只有本人登入
+  可見，可放進自己的故事本）。
 - 老師仍可直接在這個分頁把某件作品的 `Approved` 改成 `TRUE/FALSE` 來控制是否上
-  架，或直接編輯 `Visibility`／`AllowStory`。
+  架，或直接編輯 `Visibility`。
 - 舊資料（沒有 `OwnerUserID` 的列）會被視為 `public`，維持原本畫廊照常顯示的行
   為。
 - `NeedsManualPublish`：`TRUE` 代表這件作品投稿或切換公開範圍時，Drive 分享設定
@@ -128,24 +132,26 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
   公開範圍、什麼時候改的」。
 
 ### 其他分頁
-- `Comments`：留言（不需登入即可留言，維持原行為）
-- `StoryChain`：**舊版**故事接龍資料，保留備存，新版不再寫入
-- `StoryRounds` / `StoryVotes` / `HonorBoard`：新版每班獨立故事接龍投票狀態
-- `StoryBooks`：故事本（`FramesJSON` 只存 `[{artworkId, caption, order}]`，圖片/
+- `Comments`：留言（不需登入即可留言，維持原行為）。目前前端沒有留言入口，後端
+  API 仍保留；確定不做留言功能的話可以手動刪掉這個分頁。
+- `StoryBooks`：故事接龍頁的故事本草稿（`FramesJSON` 只存 `[{artworkId, caption, order}]`，圖片/
   作者/班級一律即時查 `Artworks` 取得，不重複存）
 - `AIUsage`：AI 作圖每人每日用量
 - `Settings`：全域可調參數（`Key`/`Value`），見下表，老師可直接改值：
 
   | Key | 預設值 | 說明 |
   |---|---|---|
-  | `STORY_CANDIDATES_PER_ROUND` | 4 | 每輪候選作品數 |
-  | `STORY_DAILY_ROLLOVER_HOUR` | 12 | 每日自動結算時間（Asia/Taipei） |
   | `STORY_BOOK_MAX_PAGES` | 30 | 故事本每本最多頁數 |
   | `STORY_BOOK_CHARS_PER_PAGE` | 200 | 每頁文字上限 |
   | `STORY_BOOK_MAX_ACTIVE` | 3 | 每人同時可建立的故事本數 |
   | `AI_DEFAULT_QUOTA_LIMIT` | 30 | 新帳號預設每日 AI 作圖額度 |
   | `AI_DEFAULT_RESET_HOUR` | 23 | 新帳號預設額度重置時間（配合固定的 59 分 59 秒，等於每天 23:59:59 重置） |
-  | `MAX_ARTWORKS_PER_USER` | 94 | 每個帳號最多能擁有幾件作品，達上限就不能再用 AI 作圖產生新圖（前端 `js/config.js` 有同名設定，兩邊要一起改） |
+  | `MAX_ARTWORKS_PER_USER` | 100 | 每個帳號最多能擁有幾張圖片作品（AI 作圖與投稿共用這個上限） |
+  | `MAX_BOOKS_PER_USER` | 10 | 每個帳號最多能上傳幾本故事本 PDF |
+
+  上面兩個上限在前端 `js/config.js` 有同名設定，**兩邊要改成一樣的數字**。前端另外
+  還有兩個「快到上限就先提醒」的門檻，只在前端設定：`WARN_ARTWORKS_AT`（預設 94）
+  與 `WARN_BOOKS_AT`（預設 8）。
 
   另外，結果視窗裡「微調後再產生一次」的次數上限只在前端設定：
   `js/config.js` 的 `MAX_TWEAKS_PER_IMAGE`（預設 5）。每次微調都會真的呼叫一次
@@ -181,18 +187,16 @@ Pages、學校網頁空間…皆可），純前端不需要建置流程。
 - **一次調整所有人的 AI 額度**：Apps Script 編輯器執行 `setAllUsersQuotaLimit()`
   （數值取自 `DEFAULT_SETTINGS.AI_DEFAULT_QUOTA_LIMIT`，目前是 30）。重置時間則用
   `setAllUsersResetHour()`。兩個函式都可以重複執行，不會弄壞既有資料。
-- **手動結算故事接龍**：Apps Script 編輯器函式選單選：
-  - `advanceStoryRoundForClass`：先在程式碼上方暫時改成
-    `advanceStoryRoundForClass("七年一班")` 這樣直接執行，或用「執行 → 帶參數執
-    行」功能。
-  - `advanceAllStoryRounds`：一次結算所有班級目前進行中的輪次。
-- **安裝每日自動結算**：執行一次 `installDailyStoryTrigger`（可重複執行，會先移
-  除舊的同名 trigger 再重新安裝，不會裝兩份）。之後每天 `STORY_DAILY_ROLLOVER_HOUR`
-  點（預設中午 12:00，Asia/Taipei）會自動結算所有班級並開下一輪。
-- **重置故事接龍**：`resetStoryForClass("七年一班")` 只清除該班的
-  `StoryRounds`/`HonorBoard`（`StoryVotes` 目前設計為全域共用，重置時會一併清
-  空）；`resetAllStory()` 重置全部班級。舊版 `StoryChain` 資料不受影響、也不會
-  被刪除。
+- **刪掉投票功能留下的分頁**：投票功能已移除，`StoryRounds`、`StoryVotes`、
+  `HonorBoard`、`StoryChain` 這四個分頁不再有任何程式碼會用到。要清掉請先
+  「檔案 → 建立副本」備份整份 Sheet，再執行 `deleteUnusedSheets()`。
+  ⚠️ 這個動作會永久刪除整個分頁與裡面的資料，無法復原。
+  如果你之前裝過每日自動結算的觸發器，請到 Apps Script 左側「觸發器」頁面手動刪
+  掉，否則它會固定失敗並寄錯誤信給你。
+- **學生自己刪作品**：學生在「我的頁面」每張卡片右上角的 ✕ 就能刪除自己的作品
+  （會先跳確認）。Drive 上的檔案是移到**垃圾桶**而不是永久刪除，誤刪的話 30 天
+  內還能從 Drive 垃圾桶救回來，但 Sheet 那一列已經移除，救回檔案後需要老師手動
+  補回資料列。
 
 ---
 
@@ -315,21 +319,20 @@ Apps Script 後端（不再是瀏覽器直接跟 Google 的圖片伺服器要資
       - `private`：畫廊看不到，本人登入後在「我的投稿」看得到圖，且圖片網址帶
         有 `token` 參數（換成別人的 sessionToken 或拿掉 token 應該看不到圖）
 - [ ] 網址匯入模式無法選擇「私人」
-- [ ] 故事接龍只顯示登入者自己班級的候選作品，看不到其他班的投票
-- [ ] 不能投給自己的作品（按鈕會顯示提示文字而非投票按鈕）
-- [ ] 同一人可以在結算前改票，改票後只留一筆紀錄（檢查 `StoryVotes` 分頁該
-      `RoundID+UserID` 只有一列）
-- [ ] 手動執行 `advanceStoryRoundForClass` 後，`HonorBoard` 出現前三名、開新一
-      輪候選
-- [ ] 安裝 `installDailyStoryTrigger` 後，隔天中午（或你設定的時間）自動結算（
-      可先改 `STORY_DAILY_ROLLOVER_HOUR` 成快到的時間測試）
+- [ ] 故事接龍頁：素材庫在上、我的故事本在下，且完全沒有投票/票況/榮譽榜區塊
+- [ ] 我的頁面：下方可切換「圖片 / 故事本」兩個分頁，篩選條在兩邊都能用
+- [ ] 我的頁面：卡片右上角 ✕ 會先跳確認，確認後作品消失、數量統計 -1
+- [ ] 我的頁面：「⬇️ 下載」圖片存成 PNG、故事本存成 PDF
+- [ ] 我的頁面：上傳故事本 PDF 成功後，會出現在「故事本」分頁
+- [ ] 我的頁面：圖片達 94 張或故事本達 8 本時，上方數量統計變紅字並出現提醒
+- [ ] 我的頁面：圖片達 100 張或故事本達 10 本時，送出會被擋下並跳提示
 - [ ] 故事本在瀏覽器 A 建立/編輯後，用另一台裝置（或無痕視窗）登入同一帳號，能
       看到相同內容
 - [ ] AI 作圖：額度用到 70%（30 次上限時是第 21 次）出現提醒；用滿 30 次後按鈕停
       用且後端拒絕
 - [ ] AI 作圖：產生按鈕的括號內顯示正確的剩餘次數；重置時間顯示為 23:59:59
-- [ ] AI 作圖：作品數達到 `MAX_ARTWORKS_PER_USER`（94）時，按產生圖片會跳出
-      「請先刪除一些作品再來產圖吧！」且不會送出請求
+- [ ] AI 作圖：圖片作品數達到 `MAX_ARTWORKS_PER_USER`（100）時，按產生圖片會跳出
+      「請先刪除一些作品再來產圖吧！」且不會送出請求；94 張時只是紅字提醒
 - [ ] AI 作圖：產生成功後跳出結果視窗，「下載 PNG」能存到電腦，視窗下方顯示這次
       用的完整 Prompt
 - [ ] AI 作圖：產生過的 Prompt 會出現在下拉選單，選了會填回完整 Prompt 欄位

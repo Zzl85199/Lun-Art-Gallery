@@ -7,9 +7,16 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 const VISIBILITY_OPTIONS = [
-  { value: "public", label: "🌍 公開", hint: "顯示在畫廊，也可進同班故事接龍票選、被其他人放進故事本素材庫" },
-  { value: "gallery_only", label: "🖼️ 僅畫廊", hint: "顯示在畫廊，但不能被票選、也不能被別人放進故事本" },
+  { value: "public", label: "🌍 公開", hint: "顯示在畫廊，也可以被其他人放進故事本素材庫" },
+  { value: "gallery_only", label: "🖼️ 僅畫廊", hint: "顯示在畫廊，但不能被別人放進故事本" },
   { value: "private", label: "🔒 私人", hint: "只有你自己登入後看得到，可以放進自己的故事本" },
+];
+
+/** 故事本上傳的公開範圍（故事本是 PDF，不會出現在圖片畫廊裡） */
+const BOOK_VISIBILITY_OPTIONS = [
+  { value: "public", label: "🌍 公開", hint: "老師與同學都可以下載這本故事本" },
+  { value: "gallery_only", label: "🖼️ 僅畫廊", hint: "同上，登入後的同學可以看到" },
+  { value: "private", label: "🔒 私人", hint: "只有你自己登入後看得到" },
 ];
 
 /** 把使用者選的圖片壓縮到合理大小再轉成 base64（共用版本在 js/main.js 的 compressImageFile） */
@@ -23,7 +30,13 @@ function initSubmitPage(root, user) {
     </div>
 
     <div class="steps-note">
-      <p>目前身份：<b>${escapeHtml(user.className)}・${escapeHtml(user.nickname)}</b>（班級與真實姓名由老師管理，暱稱可在右上角 ✏️ 修改）</p>
+      <p>目前身份：<b>${escapeHtml(user.className)}・${escapeHtml(user.nickname)}</b></p>
+      <p id="quota-counts" style="margin-top:6px;"></p>
+    </div>
+
+    <div class="btn-row" id="upload-kind-tabs" style="margin:18px 0 6px;">
+      <button type="button" class="btn btn-outline-dark upload-kind-btn active" data-kind="image">🖼️ 投稿圖片</button>
+      <button type="button" class="btn btn-outline-dark upload-kind-btn" data-kind="book">📖 上傳故事本</button>
     </div>
 
     <form class="submit-form" id="submit-form">
@@ -84,15 +97,54 @@ function initSubmitPage(root, user) {
         <div class="visibility-options" id="visibility-options"></div>
       </div>
 
-      <div class="form-row" id="allow-story-row">
-        <label><input type="checkbox" id="field-allow-story" checked> 允許這件作品被抽進「本班作品票選」故事接龍</label>
-      </div>
-
       <button type="submit" class="btn btn-pin" style="width:100%;">送出投稿</button>
       <div class="form-msg" id="submit-msg"></div>
     </form>
 
-    <h2 class="board-heading" style="font-size:1.4rem;margin-top:40px;">📂 我的投稿</h2>
+    <form class="submit-form" id="book-form" style="display:none;">
+      <div class="form-row">
+        <label for="book-title">故事本名稱 *</label>
+        <input type="text" id="book-title" maxlength="60" placeholder="例如：橘貓的一天">
+      </div>
+
+      <div class="form-row">
+        <label for="book-file">故事本 PDF *</label>
+        <input type="file" id="book-file" accept="application/pdf">
+        <div class="form-hint">
+          先到「故事接龍」頁把故事本做好 → 按「產生閱讀/列印頁」→ 在列印視窗選擇「另存為 PDF」，
+          再回到這裡把 PDF 上傳。檔案請控制在 9MB 以內。
+        </div>
+        <div class="image-check" id="book-file-check"></div>
+      </div>
+
+      <div class="form-row">
+        <label for="book-desc">創作說明</label>
+        <textarea id="book-desc" placeholder="說說這本故事本在講什麼、你們是怎麼接下去的..."></textarea>
+      </div>
+
+      <div class="form-row">
+        <label for="book-tags">標籤（用逗號分隔）</label>
+        <input type="text" id="book-tags" placeholder="例如：冒險, 貓咪, 友情">
+      </div>
+
+      <div class="form-row">
+        <label>公開範圍 *</label>
+        <select id="book-visibility">
+          ${BOOK_VISIBILITY_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("")}
+        </select>
+        <div class="form-hint" id="book-visibility-hint"></div>
+      </div>
+
+      <button type="submit" class="btn btn-pin" style="width:100%;">上傳故事本</button>
+      <div class="form-msg" id="book-msg"></div>
+    </form>
+
+    <h2 class="board-heading" style="font-size:1.4rem;margin-top:40px;">📂 我的作品</h2>
+    <div class="btn-row" id="mine-kind-tabs" style="justify-content:center;margin-bottom:14px;">
+      <button type="button" class="btn btn-outline-dark mine-kind-btn active" data-kind="image">🖼️ 圖片</button>
+      <button type="button" class="btn btn-outline-dark mine-kind-btn" data-kind="book">📖 故事本</button>
+    </div>
+    <div id="mine-filter-mount"></div>
     <div id="my-submissions"></div>
   `;
 
@@ -212,7 +264,6 @@ function initSubmitPage(root, user) {
 
   /* ---------------- 公開範圍 ---------------- */
   const visibilityOptionsEl = document.getElementById("visibility-options");
-  const allowStoryRow = document.getElementById("allow-story-row");
   let visibility = "public";
 
   function renderVisibilityOptions() {
@@ -234,11 +285,9 @@ function initSubmitPage(root, user) {
     }
     select.addEventListener("change", () => {
       visibility = select.value;
-      allowStoryRow.style.display = visibility === "public" ? "block" : "none";
       updateHint();
     });
     updateHint();
-    allowStoryRow.style.display = visibility === "public" ? "block" : "none";
   }
   renderVisibilityOptions();
 
@@ -249,6 +298,8 @@ function initSubmitPage(root, user) {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+
+    if (!ensureUnderLimit("image")) return;
 
     if (imageMode === "upload" && !compressed) { showMsg("error", "請選擇要上傳的圖片。"); return; }
     if (imageMode === "url" && (!urlInput.value.trim() || !urlValidationOk)) {
@@ -265,7 +316,6 @@ function initSubmitPage(root, user) {
       description: document.getElementById("field-desc").value.trim(),
       tags: document.getElementById("field-tags").value.trim(),
       visibility,
-      allowStory: document.getElementById("field-allow-story").checked,
     };
 
     submitBtn.disabled = true;
@@ -298,7 +348,7 @@ function initSubmitPage(root, user) {
       toolOtherInput.style.display = "none";
       visibility = "public";
       renderVisibilityOptions();
-      loadMySubmissions();
+      loadMine();
     } catch (err) {
       showMsg("error", "投稿失敗：" + err.message);
     } finally {
@@ -313,90 +363,315 @@ function initSubmitPage(root, user) {
     msgEl.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  /* ---------------- 我的投稿列表 + 隱私管理 ---------------- */
-  const mySubmissionsEl = document.getElementById("my-submissions");
+  /* ---------------- 上傳模式切換：投稿圖片 / 上傳故事本 ---------------- */
+  const bookForm = document.getElementById("book-form");
+  const uploadKindTabs = document.getElementById("upload-kind-tabs");
+  uploadKindTabs.querySelectorAll(".upload-kind-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const kind = btn.dataset.kind;
+      uploadKindTabs.querySelectorAll(".upload-kind-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      form.style.display = kind === "image" ? "" : "none";
+      bookForm.style.display = kind === "book" ? "" : "none";
+    });
+  });
 
-  async function loadMySubmissions() {
-    renderStateMessage(mySubmissionsEl, { type: "loading", text: "載入我的投稿中..." });
+  /* ---------------- 數量上限 ---------------- */
+  let counts = { images: 0, books: 0 };
+  const countsEl = document.getElementById("quota-counts");
+
+  function renderCounts() {
+    const imgWarn = counts.images >= CONFIG.WARN_ARTWORKS_AT;
+    const bookWarn = counts.books >= CONFIG.WARN_BOOKS_AT;
+    const warnStyle = "color:#a8402f;font-weight:600;";
+    countsEl.innerHTML =
+      `圖片作品：<b style="${imgWarn ? warnStyle : ""}">${counts.images} / ${CONFIG.MAX_ARTWORKS_PER_USER}</b> 張　·　` +
+      `故事本：<b style="${bookWarn ? warnStyle : ""}">${counts.books} / ${CONFIG.MAX_BOOKS_PER_USER}</b> 本` +
+      (imgWarn || bookWarn
+        ? `<br><span style="${warnStyle}">⚠️ 數量快要到上限了，建議先刪掉一些不需要的作品，才不會之後想存新的卻存不下。</span>`
+        : "");
+  }
+
+  /** 送出前先擋一次；回傳 true 代表還可以新增 */
+  function ensureUnderLimit(kind) {
+    if (kind === "book" && counts.books >= CONFIG.MAX_BOOKS_PER_USER) {
+      alert(`故事本已經達到上限 ${CONFIG.MAX_BOOKS_PER_USER} 本了，請先刪除一些故事本再上傳吧！`);
+      return false;
+    }
+    if (kind === "image" && counts.images >= CONFIG.MAX_ARTWORKS_PER_USER) {
+      alert(`圖片作品已經達到上限 ${CONFIG.MAX_ARTWORKS_PER_USER} 張了，請先刪除一些作品再繼續吧！`);
+      return false;
+    }
+    return true;
+  }
+
+  /* ---------------- 上傳故事本 PDF ---------------- */
+  const bookFileInput = document.getElementById("book-file");
+  const bookFileCheck = document.getElementById("book-file-check");
+  const bookMsgEl = document.getElementById("book-msg");
+  const bookVisSelect = document.getElementById("book-visibility");
+  const bookVisHint = document.getElementById("book-visibility-hint");
+  const bookSubmitBtn = bookForm.querySelector('button[type="submit"]');
+  let bookFileData = null; // { base64, mimeType }
+
+  function updateBookVisHint() {
+    const opt = BOOK_VISIBILITY_OPTIONS.find((o) => o.value === bookVisSelect.value);
+    bookVisHint.textContent = opt ? opt.hint : "";
+  }
+  bookVisSelect.addEventListener("change", updateBookVisHint);
+  updateBookVisHint();
+
+  function showBookMsg(type, text) {
+    bookMsgEl.className = `form-msg show ${type}`;
+    bookMsgEl.textContent = text;
+  }
+
+  bookFileInput.addEventListener("change", async () => {
+    bookFileData = null;
+    bookFileCheck.className = "image-check";
+    bookFileCheck.textContent = "";
+    const file = bookFileInput.files[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      bookFileCheck.className = "image-check show error";
+      bookFileCheck.textContent = "❌ 故事本只接受 PDF 檔案。";
+      bookFileInput.value = "";
+      return;
+    }
+    const MAX_BYTES = 9 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      bookFileCheck.className = "image-check show error";
+      bookFileCheck.textContent = `❌ 檔案 ${(file.size / 1024 / 1024).toFixed(1)}MB，超過 9MB 上限。請減少頁數或降低圖片解析度後再匯出一次。`;
+      bookFileInput.value = "";
+      return;
+    }
+
+    try {
+      bookFileData = await readFileAsBase64(file);
+      bookFileCheck.className = "image-check show success";
+      bookFileCheck.textContent = `✅ 已選擇：${file.name}（${(file.size / 1024 / 1024).toFixed(1)}MB）`;
+    } catch (err) {
+      bookFileCheck.className = "image-check show error";
+      bookFileCheck.textContent = "❌ 檔案讀取失敗：" + err.message;
+      bookFileInput.value = "";
+    }
+  });
+
+  bookForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // 先擋數量上限，免得學生挑好檔案、填完說明才被退回
+    if (!ensureUnderLimit("book")) return;
+
+    const title = document.getElementById("book-title").value.trim();
+    if (!title) { showBookMsg("error", "請幫這本故事本取個名字。"); return; }
+    if (!bookFileData) { showBookMsg("error", "請選擇要上傳的 PDF 檔案。"); return; }
+
+    bookSubmitBtn.disabled = true;
+    bookSubmitBtn.textContent = "上傳中，請稍候...";
+    showBookMsg("pending", "故事本上傳中，PDF 檔案比較大，可能要等一下...");
+
+    try {
+      const res = await Api.submitBook({
+        title,
+        description: document.getElementById("book-desc").value.trim(),
+        tags: document.getElementById("book-tags").value.trim(),
+        visibility: bookVisSelect.value,
+        fileBase64: bookFileData.base64,
+        mimeType: bookFileData.mimeType,
+      });
+
+      if (res.needsManualPublish) {
+        showBookMsg("pending", "✅ 上傳成功，目前狀態：審核中。");
+      } else {
+        showBookMsg("success", "🎉 故事本上傳成功！");
+      }
+
+      bookForm.reset();
+      bookFileData = null;
+      bookFileCheck.className = "image-check";
+      bookFileCheck.textContent = "";
+      updateBookVisHint();
+      loadMine();
+    } catch (err) {
+      showBookMsg("error", "上傳失敗：" + err.message);
+    } finally {
+      bookSubmitBtn.disabled = false;
+      bookSubmitBtn.textContent = "上傳故事本";
+    }
+  });
+
+  /* ---------------- 我的作品：圖片 / 故事本兩個分頁 ---------------- */
+  const mySubmissionsEl = document.getElementById("my-submissions");
+  const mineKindTabs = document.getElementById("mine-kind-tabs");
+  const filterBar = mountSharedFilterBar(document.getElementById("mine-filter-mount"), "mine");
+  let mineKind = "image";
+  let allMine = [];
+
+  mineKindTabs.querySelectorAll(".mine-kind-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mineKind = btn.dataset.kind;
+      mineKindTabs.querySelectorAll(".mine-kind-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      renderMine();
+    });
+  });
+
+  async function loadMine() {
+    renderStateMessage(mySubmissionsEl, { type: "loading", text: "載入我的作品中..." });
     try {
       const res = await Api.listMine();
-      renderMySubmissions(res.artworks || []);
+      allMine = res.artworks || [];
+      counts = {
+        images: allMine.filter((a) => a.Kind !== "book").length,
+        books: allMine.filter((a) => a.Kind === "book").length,
+      };
+      renderCounts();
+      filterBar.refreshOptions(allMine);
+      renderMine();
     } catch (err) {
-      renderStateMessage(mySubmissionsEl, { type: "error", text: "載入失敗：" + err.message, onRetry: loadMySubmissions });
+      renderStateMessage(mySubmissionsEl, { type: "error", text: "載入失敗：" + err.message, onRetry: loadMine });
     }
   }
 
-  function renderMySubmissions(artworks) {
-    if (!artworks.length) {
-      renderStateMessage(mySubmissionsEl, { type: "empty", text: "你還沒有投稿過任何作品。" });
+  function renderMine() {
+    const list = allMine
+      .filter((a) => (mineKind === "book" ? a.Kind === "book" : a.Kind !== "book"))
+      .filter((a) => filterBar.matches(a));
+
+    filterBar.countEl.textContent = `共 ${list.length} ${mineKind === "book" ? "本故事本" : "件圖片作品"}`;
+
+    if (!list.length) {
+      renderStateMessage(mySubmissionsEl, {
+        type: "empty",
+        text: mineKind === "book" ? "你還沒有上傳任何故事本。" : "你還沒有投稿過任何圖片作品。",
+      });
       return;
     }
-    mySubmissionsEl.innerHTML = `<div class="my-submissions-grid">${artworks.map((a) => submissionCardHtml(a)).join("")}</div>`;
+
+    mySubmissionsEl.innerHTML = `<div class="my-submissions-grid">${list.map(submissionCardHtml).join("")}</div>`;
 
     mySubmissionsEl.querySelectorAll(".submission-card").forEach((card) => {
       const id = card.dataset.artworkId;
-      const img = card.querySelector("img");
-      const placeholder = card.querySelector(".no-image-placeholder");
-      const art = artworks.find((a) => a.ID === id);
-      setupArtworkImage(img, placeholder, art);
+      const art = list.find((a) => a.ID === id);
+      if (!art) return;
+
+      if (art.Kind !== "book") {
+        setupArtworkImage(card.querySelector("img"), card.querySelector(".no-image-placeholder"), art);
+      }
 
       const visSelect = card.querySelector(".submission-visibility");
-      const allowStoryInput = card.querySelector(".submission-allow-story");
       const saveBtn = card.querySelector(".submission-save-btn");
+      const downloadBtn = card.querySelector(".submission-download-btn");
+      const deleteBtn = card.querySelector(".submission-delete-btn");
       const msg = card.querySelector(".submission-msg");
-
-      visSelect.addEventListener("change", () => {
-        allowStoryInput.closest(".submission-allow-story-row").style.display = visSelect.value === "public" ? "block" : "none";
-      });
 
       saveBtn.addEventListener("click", async () => {
         saveBtn.disabled = true;
         msg.textContent = "更新中...";
         try {
-          const res = await Api.updateVisibility(id, visSelect.value, allowStoryInput.checked);
+          const res = await Api.updateVisibility(id, visSelect.value);
           if (res.needsManualPublish) {
             msg.textContent = "⏳ 已儲存，狀態：審核中";
-            alert("已儲存，但系統暫時無法自動把圖片設定為公開／僅畫廊可看，已先標記為「審核中」。\n\n請告訴老師，請老師到後端 Google Sheet 的 Artworks 分頁，手動把這件作品的 Approved 欄位改成 TRUE，協助讓它正常上架。");
+            alert("已儲存，但系統暫時無法自動把檔案設定為公開／僅畫廊可看，已先標記為「審核中」。\n\n請告訴老師，請老師到後端 Google Sheet 的 Artworks 分頁，手動把這件作品的 Approved 欄位改成 TRUE，協助讓它正常上架。");
           } else {
             msg.textContent = "✅ 已更新";
           }
-          loadMySubmissions();
+          loadMine();
         } catch (err) {
           msg.textContent = "❌ " + err.message;
         } finally {
           saveBtn.disabled = false;
         }
       });
+
+      downloadBtn.addEventListener("click", async () => {
+        downloadBtn.disabled = true;
+        const original = downloadBtn.textContent;
+        downloadBtn.textContent = "準備中...";
+        try {
+          await downloadArtwork(art);
+          msg.textContent = "✅ 已開始下載";
+        } catch (err) {
+          msg.textContent = "❌ 下載失敗：" + err.message;
+        } finally {
+          downloadBtn.disabled = false;
+          downloadBtn.textContent = original;
+        }
+      });
+
+      deleteBtn.addEventListener("click", async () => {
+        const what = art.Kind === "book" ? `故事本「${art.Title || "未命名"}」` : "這件作品";
+        if (!confirm(`確定要刪除${what}嗎？\n\n刪掉之後畫廊和故事本素材庫裡都會看不到它，這個動作無法在網站上復原。`)) return;
+
+        deleteBtn.disabled = true;
+        msg.textContent = "刪除中...";
+        try {
+          await Api.deleteArtwork(id);
+          loadMine();
+        } catch (err) {
+          msg.textContent = "❌ 刪除失敗：" + err.message;
+          deleteBtn.disabled = false;
+        }
+      });
     });
   }
 
+  /** 下載一件作品：圖片存成 PNG，故事本存成 PDF */
+  async function downloadArtwork(art) {
+    const dataUrl = art.needsProxy || !art.ImageURL
+      ? await Api.fetchPrivateImageDataUrl(art.ID)
+      : art.ImageURL;
+
+    const stamp = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timeTag = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`;
+
+    if (art.Kind === "book") {
+      const safeTitle = (art.Title || "故事本").replace(/[\\/:*?"<>|]/g, "_");
+      triggerFileDownload(dataUrl, `${safeTitle}_${timeTag}.pdf`);
+      return;
+    }
+    await downloadDataUrlAsPng(dataUrl, `AI作品_${timeTag}.png`);
+  }
+
   function submissionCardHtml(a) {
+    const isBook = a.Kind === "book";
     const approvedLabel = a.Visibility === "private" ? "" : a.Approved ? "✅ 已上架" : "⏳ 審核中";
+    const options = isBook ? BOOK_VISIBILITY_OPTIONS : VISIBILITY_OPTIONS;
+
+    const thumb = isBook
+      ? `<div class="note-thumb-wrap book-thumb">
+           <span class="book-thumb-icon">📖</span>
+           <span class="book-thumb-title">${escapeHtml(a.Title || "未命名故事本")}</span>
+         </div>`
+      : `<div class="note-thumb-wrap">
+           <img loading="lazy" alt="我的作品">
+           <div class="no-image-placeholder"><span class="no-image-icon">🖼️</span><span>尚無圖片</span></div>
+         </div>`;
+
     return `
       <div class="submission-card note-card" data-artwork-id="${escapeHtml(a.ID)}">
-        <div class="note-thumb-wrap">
-          <img loading="lazy" alt="我的作品">
-          <div class="no-image-placeholder"><span class="no-image-icon">🖼️</span><span>尚無圖片</span></div>
-        </div>
+        <button type="button" class="submission-delete-btn" title="刪除這件作品" aria-label="刪除這件作品">✕</button>
+        ${thumb}
         <div class="note-meta-row">
-          <span class="note-student">${escapeHtml(a.AITool || "")}</span>
+          <span class="note-student">${escapeHtml(isBook ? "故事本" : a.AITool || "")}</span>
           <span class="note-class">${escapeHtml(approvedLabel)}</span>
         </div>
         <div class="form-row">
           <label>公開範圍</label>
           <select class="submission-visibility">
-            ${VISIBILITY_OPTIONS.map((opt) => `<option value="${opt.value}" ${a.Visibility === opt.value ? "selected" : ""} ${opt.value === "private" && !a.canGoPrivate ? "disabled" : ""}>${opt.label}</option>`).join("")}
+            ${options.map((opt) => `<option value="${opt.value}" ${a.Visibility === opt.value ? "selected" : ""} ${opt.value === "private" && !a.canGoPrivate ? "disabled" : ""}>${opt.label}</option>`).join("")}
           </select>
           ${!a.canGoPrivate ? `<div class="form-hint">此作品是透過網址匯入的，無法設為私人</div>` : ""}
         </div>
-        <div class="form-row submission-allow-story-row" style="display:${a.Visibility === "public" ? "block" : "none"};">
-          <label><input type="checkbox" class="submission-allow-story" ${a.AllowStory ? "checked" : ""}> 允許進入故事接龍票選</label>
+        <div class="btn-row" style="margin-top:4px;">
+          <button type="button" class="btn btn-outline-dark submission-save-btn" style="flex:1;">儲存變更</button>
+          <button type="button" class="btn btn-outline-dark submission-download-btn" style="flex:1;">⬇️ 下載</button>
         </div>
-        <button type="button" class="btn btn-outline-dark submission-save-btn" style="width:100%;">儲存變更</button>
         <div class="form-msg-inline submission-msg"></div>
       </div>
     `;
   }
 
-  loadMySubmissions();
+  loadMine();
 }
