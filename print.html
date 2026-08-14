@@ -3,30 +3,68 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>故事本列印預覽 - AI 創作畫廊</title>
+<title>繪本預覽 / 下載 PDF - AI 創作畫廊</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
-  body { background: #fff; }
-  .print-toolbar { position: sticky; top: 0; background: #fff; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; gap: 10px; align-items: center; z-index: 10; }
-  .print-page { max-width: 800px; margin: 30px auto; padding: 30px; page-break-after: always; }
-  .print-page:last-child { page-break-after: auto; }
-  .print-page img { max-width: 100%; border-radius: 10px; display: block; margin: 0 auto 16px; }
-  .print-page .caption { font-family: var(--font-hand); font-size: 1.15rem; line-height: 1.8; text-align: center; white-space: pre-wrap; }
-  .print-title { text-align: center; font-family: var(--font-hand); font-size: 2rem; margin: 40px 0; }
-  @media print {
-    .print-toolbar { display: none; }
-    .print-page { margin: 0; max-width: 100%; }
+  body { background: #e9e3d3; }
+
+  .print-toolbar {
+    position: sticky; top: 0; z-index: 10;
+    background: #fffdf6;
+    padding: 12px 20px;
+    border-bottom: 2px solid #cbbfa2;
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
+  .print-toolbar .grow { flex: 1 1 auto; }
+  #print-status { color: #6b5f4c; font-family: var(--font-hand); }
+
+  .fill-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-hand); color: #5b4f3f; font-size: 0.95rem;
+    background: #f3ecd9; border: 2px solid #cbbfa2; border-radius: 999px; padding: 6px 14px;
+    cursor: pointer;
+  }
+
+  .book-pages { max-width: 1040px; margin: 0 auto; padding: 28px 16px 60px; }
+
+  /* 每一頁的預覽：白紙 + 陰影，比例固定 A4 橫式 */
+  .book-page-wrap { margin: 0 auto 26px; position: relative; }
+  .book-page-wrap canvas {
+    display: block; width: 100%; height: auto;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+    border-radius: 3px;
+    background: #fff;
+  }
+  .book-page-label {
+    text-align: center; font-family: var(--font-hand); color: #6b5f4c;
+    font-size: 0.85rem; margin: 6px 0 0;
+  }
+  .print-note {
+    max-width: 1040px; margin: 18px auto 0; padding: 0 16px;
+    font-family: var(--font-hand); color: #6b5f4c; font-size: 0.92rem; line-height: 1.9;
   }
 </style>
 </head>
 <body>
   <div class="print-toolbar">
-    <button class="btn btn-pin" onclick="window.print()">🖨️ 列印 / 另存 PDF</button>
-    <span id="print-status" style="color:#6b5f4c;"></span>
+    <button class="btn btn-pin" id="download-pdf-btn" disabled>⬇️ 下載繪本 PDF</button>
+    <label class="fill-toggle">
+      <input type="checkbox" id="fill-mode-toggle">
+      圖片裁切鋪滿整頁
+    </label>
+    <span id="print-status"></span>
+    <span class="grow"></span>
+    <span style="color:#8a7d68;font-size:0.85rem;">橫式 A4 · 297×210mm</span>
   </div>
-  <div id="print-content"></div>
 
+  <div class="print-note" id="print-note"></div>
+  <div class="book-pages" id="print-content"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/print.js"></script>

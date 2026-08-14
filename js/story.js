@@ -17,7 +17,7 @@ function initStoryPage(root, user) {
       <div class="my-story-pool" id="my-story-pool"><p style="color:#8a7d68;">載入中...</p></div>
 
       <h2 class="board-heading my-story-heading" style="font-size:1.7rem;margin-top:44px;">🎨 我的故事本</h2>
-      <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">雲端保存，登入任何裝置都能繼續編輯；完成後可產生列印/PDF 頁面，再到「我的頁面」上傳成故事本。</p>
+      <p style="text-align:center;color:#6b5f4c;margin-top:-16px;">雲端保存，登入任何裝置都能繼續編輯；完成後按「產生繪本」就能直接下載橫式 A4 的 PDF，再到「我的頁面」上傳成故事本。</p>
 
       <div id="book-tabs" class="btn-row" style="justify-content:center;margin:20px 0;"></div>
       <div id="book-editor"></div>
@@ -27,8 +27,36 @@ function initStoryPage(root, user) {
   initBookEditor(user);
 }
 
+/**
+ * 即時提示這一頁的文字長度。繪本一頁 1～2 句最好看，
+ * 太短會變成圖說、太長印出來會擠在文字帶裡塞不下。
+ */
+function updateCaptionCounter(textarea, counterEl) {
+  if (!counterEl) return;
+  const len = textarea.value.trim().length;
+  let cls = "";
+  let text = "";
+  if (len === 0) {
+    text = "還沒寫文字";
+  } else if (len < 10) {
+    cls = "warn";
+    text = `${len} 字・有點短，試著寫成一句完整的話`;
+  } else if (len <= 60) {
+    cls = "good";
+    text = `${len} 字・長度剛好 👍`;
+  } else if (len <= 120) {
+    cls = "warn";
+    text = `${len} 字・有點長，一頁 1～2 句最好讀`;
+  } else {
+    cls = "over";
+    text = `${len} 字・太長了，建議拆成兩頁`;
+  }
+  counterEl.className = "caption-counter " + cls;
+  counterEl.textContent = text;
+}
+
 /* ==========================================================================
-   我的故事本（雲端保存 + debounce 自動儲存 + 列印頁）
+   我的故事本（雲端保存 + debounce 自動儲存 + 繪本 PDF）
    ========================================================================== */
 function initBookEditor(user) {
   const tabsEl = document.getElementById("book-tabs");
@@ -133,7 +161,8 @@ function initBookEditor(user) {
             ${f.unavailable ? `<div class="no-image-placeholder" style="display:flex;"><span class="no-image-icon">🚫</span><span>圖片已無法顯示</span></div>` : `<img data-frame-img-index="${i}" alt="${escapeHtml(f.nickname || "")}">`}
           </div>
           <div class="story-frame-caption"><b>${escapeHtml(f.nickname || "")}</b></div>
-          <textarea class="my-frame-caption-input" placeholder="這一頁的文字..." data-frame-index="${i}">${escapeHtml(f.caption || "")}</textarea>
+          <textarea class="my-frame-caption-input" placeholder="用 1～2 句話寫出這一頁發生什麼事…" maxlength="200" data-frame-index="${i}">${escapeHtml(f.caption || "")}</textarea>
+          <div class="caption-counter" data-frame-index="${i}"></div>
         </div>
       `
           )
@@ -144,9 +173,19 @@ function initBookEditor(user) {
       <div class="my-board-header">
         <input type="text" id="book-title-input" value="${escapeHtml(currentBook.title)}" maxlength="60" style="font-family:var(--font-hand);font-size:1.2rem;flex:1;">
         <button type="button" class="btn btn-outline-dark" id="delete-book-btn">🗑 刪除這本</button>
-        <button type="button" class="btn btn-chalk" id="print-book-btn">🖨️ 產生閱讀/列印頁</button>
+        <button type="button" class="btn btn-chalk" id="print-book-btn">📕 產生繪本 / 下載 PDF</button>
       </div>
       <div class="save-status" id="save-status" style="text-align:right;color:#8a7d68;font-size:0.85rem;"></div>
+      <div class="writing-tips">
+        <b>📝 每一頁的文字這樣寫，才像繪本</b>
+        <ul>
+          <li><b>一頁 1～2 句就好</b>，寫成完整的句子，句末記得加標點符號。</li>
+          <li><b>寫「發生什麼事 ＋ 心情」</b>，不要只寫圖片裡有什麼。<br>
+            ✗ 皮皮在讀書　→　✓ 皮皮把書搬到窗邊，一邊看書一邊等櫻花落下來。</li>
+          <li><b>跟前一頁接起來</b>：用「後來」「沒想到」「這時候」開頭最好接。</li>
+          <li><b>主角名字每頁都要出現</b>，讀的人才不會搞混誰是誰。</li>
+        </ul>
+      </div>
       <div class="my-story-board-dropzone" id="frames-dropzone">${framesHtml}</div>
     `;
 
@@ -184,8 +223,11 @@ function initBookEditor(user) {
     });
 
     editorEl.querySelectorAll(".my-frame-caption-input").forEach((textarea) => {
+      const counter = editorEl.querySelector(`.caption-counter[data-frame-index="${textarea.dataset.frameIndex}"]`);
+      updateCaptionCounter(textarea, counter);
       textarea.addEventListener("input", () => {
         currentBook.frames[Number(textarea.dataset.frameIndex)].caption = textarea.value;
+        updateCaptionCounter(textarea, counter);
         scheduleSave();
       });
     });

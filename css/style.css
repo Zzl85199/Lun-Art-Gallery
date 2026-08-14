@@ -184,10 +184,13 @@ button {
 .nav-tabs {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  justify-content: flex-end;
+  gap: 6px 8px;
+  /* 不要用 overflow-x:auto —— 只要設了 overflow-x，overflow-y 的 visible 就會
+     自動變成 auto，右上角就會出現一個可以上下左右滑動的小捲軸框。
+     這裡改成直接換行，導覽列永遠固定不會捲動。 */
+  flex-wrap: wrap;
+  overflow: visible;
   max-width: 100%;
 }
 
@@ -2042,3 +2045,32 @@ body.is-logged-in .auth-only { display: inline-block !important; }
 }
 
 .my-story-board-dropzone.is-sorting .my-story-frame { transition: transform 0.15s ease; }
+
+/* ===================================================================
+   故事接龍：文字寫作提示 + 每頁字數提示
+   =================================================================== */
+.writing-tips {
+  background: #fffdf6;
+  border: 2px dashed #cbbfa2;
+  border-radius: 16px;
+  padding: 14px 20px;
+  margin: 10px 0 18px;
+  font-family: var(--font-hand);
+  color: #5b4f3f;
+  font-size: 0.95rem;
+  line-height: 1.9;
+}
+.writing-tips b { color: #3a3226; }
+.writing-tips ul { margin: 6px 0 0; padding-left: 22px; }
+.writing-tips li { margin-bottom: 4px; }
+
+.caption-counter {
+  font-family: var(--font-hand);
+  font-size: 0.78rem;
+  color: #a2957c;
+  margin: 4px 2px 0;
+  min-height: 1.2em;
+}
+.caption-counter.good { color: #2f7a4f; }
+.caption-counter.warn { color: #b5711f; }
+.caption-counter.over { color: #a8402f; font-weight: 700; }

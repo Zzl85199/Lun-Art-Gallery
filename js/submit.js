@@ -35,13 +35,15 @@ function initSubmitPage(root, user) {
     </div>
 
     <div class="seg-tabs-wrap" style="margin-top:18px;">
-      <div class="seg-tabs" id="upload-kind-tabs">
-        <button type="button" class="seg-tab upload-kind-btn active" data-kind="image">🖼️ 投稿圖片</button>
-        <button type="button" class="seg-tab upload-kind-btn" data-kind="book">📖 上傳故事本</button>
+      <div class="seg-tabs" id="page-tabs">
+        <button type="button" class="seg-tab page-tab-btn active" data-view="mine-image">🖼️ 圖片</button>
+        <button type="button" class="seg-tab page-tab-btn" data-view="mine-book">📖 故事本</button>
+        <button type="button" class="seg-tab page-tab-btn" data-view="submit-image">📤 投稿圖片</button>
+        <button type="button" class="seg-tab page-tab-btn" data-view="submit-book">📚 上傳故事本</button>
       </div>
     </div>
 
-    <form class="submit-form" id="submit-form">
+    <form class="submit-form" id="submit-form" style="display:none;">
       <div class="form-row">
         <label>圖片來源 *</label>
         <div class="btn-row" id="image-mode-tabs">
@@ -113,8 +115,8 @@ function initSubmitPage(root, user) {
         <label for="book-file">故事本 PDF *</label>
         <input type="file" id="book-file" accept="application/pdf">
         <div class="form-hint">
-          先到「故事接龍」頁把故事本做好 → 按「產生閱讀/列印頁」→ 在列印視窗選擇「另存為 PDF」，
-          再回到這裡把 PDF 上傳。檔案請控制在 9MB 以內。
+          先到「故事接龍」頁把故事本做好 → 按「📕 產生繪本 / 下載 PDF」→ 在預覽頁按「⬇️ 下載繪本 PDF」，
+          再回到這裡把下載好的 PDF 上傳。檔案請控制在 9MB 以內。
         </div>
         <div class="image-check" id="book-file-check"></div>
       </div>
@@ -141,15 +143,10 @@ function initSubmitPage(root, user) {
       <div class="form-msg" id="book-msg"></div>
     </form>
 
-    <h2 class="board-heading" style="font-size:1.4rem;margin-top:40px;">📂 我的作品</h2>
-    <div class="seg-tabs-wrap">
-      <div class="seg-tabs" id="mine-kind-tabs">
-        <button type="button" class="seg-tab mine-kind-btn active" data-kind="image">🖼️ 圖片</button>
-        <button type="button" class="seg-tab mine-kind-btn" data-kind="book">📖 故事本</button>
-      </div>
+    <div id="view-mine">
+      <div id="mine-filter-mount"></div>
+      <div id="my-submissions"></div>
     </div>
-    <div id="mine-filter-mount"></div>
-    <div id="my-submissions"></div>
   `;
 
   /* ---------------- 圖片來源分頁 ---------------- */
@@ -367,16 +364,27 @@ function initSubmitPage(root, user) {
     msgEl.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  /* ---------------- 上傳模式切換：投稿圖片 / 上傳故事本 ---------------- */
+  /* ---------------- 頁面分頁切換：圖片 / 故事本 / 投稿圖片 / 上傳故事本 ----------------
+     四個按鈕排成一列，同一時間只顯示其中一個區塊，預設是「圖片」（我的圖片作品）。 */
   const bookForm = document.getElementById("book-form");
-  const uploadKindTabs = document.getElementById("upload-kind-tabs");
-  uploadKindTabs.querySelectorAll(".upload-kind-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const kind = btn.dataset.kind;
-      uploadKindTabs.querySelectorAll(".upload-kind-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      form.style.display = kind === "image" ? "" : "none";
-      bookForm.style.display = kind === "book" ? "" : "none";
-    });
+  const mineView = document.getElementById("view-mine");
+  const pageTabs = document.getElementById("page-tabs");
+  let currentView = "mine-image";
+
+  function switchView(view) {
+    currentView = view;
+    pageTabs.querySelectorAll(".page-tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+    form.style.display = view === "submit-image" ? "" : "none";
+    bookForm.style.display = view === "submit-book" ? "" : "none";
+    mineView.style.display = view === "mine-image" || view === "mine-book" ? "" : "none";
+    if (view === "mine-image" || view === "mine-book") {
+      mineKind = view === "mine-book" ? "book" : "image";
+      renderMine();
+    }
+  }
+
+  pageTabs.querySelectorAll(".page-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
   /* ---------------- 數量上限 ---------------- */
@@ -505,20 +513,11 @@ function initSubmitPage(root, user) {
     }
   });
 
-  /* ---------------- 我的作品：圖片 / 故事本兩個分頁 ---------------- */
+  /* ---------------- 我的作品清單（由上方分頁決定顯示圖片或故事本） ---------------- */
   const mySubmissionsEl = document.getElementById("my-submissions");
-  const mineKindTabs = document.getElementById("mine-kind-tabs");
   const filterBar = mountSharedFilterBar(document.getElementById("mine-filter-mount"), "mine");
   let mineKind = "image";
   let allMine = [];
-
-  mineKindTabs.querySelectorAll(".mine-kind-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      mineKind = btn.dataset.kind;
-      mineKindTabs.querySelectorAll(".mine-kind-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      renderMine();
-    });
-  });
 
   async function loadMine() {
     renderStateMessage(mySubmissionsEl, { type: "loading", text: "載入我的作品中..." });
