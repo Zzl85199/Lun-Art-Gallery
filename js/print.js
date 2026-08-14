@@ -433,6 +433,54 @@ async function ensureFontsReady() {
   } catch (e) { /* 字型載入失敗就用系統字型，不影響流程 */ }
 }
 
+/* =========================================================================
+   PDF 組裝
+   ========================================================================= */
+
+/** 故事本的公開範圍選項（和「我的頁面」上傳故事本用同一套文字） */
+const BOOK_VISIBILITY_OPTIONS = [
+  { value: "public", label: "🌍 公開", hint: "老師與同學都可以下載這本繪本" },
+  { value: "gallery_only", label: "🖼️ 僅畫廊", hint: "同上，登入後的同學可以看到" },
+  { value: "private", label: "🔒 私人", hint: "只有你自己登入後看得到" },
+];
+
+/** 後端 submitBook 的檔案大小上限是 9MB，這裡留一點餘裕 */
+const MAX_PDF_BYTES = 8.4 * 1024 * 1024;
+
+function pagesToPdf(pages, quality) {
+  const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  pages.forEach((p, i) => {
+    if (i > 0) pdf.addPage();
+    pdf.addImage(p.canvas.toDataURL("image/jpeg", quality), "JPEG", 0, 0, 297, 210);
+  });
+  return pdf;
+}
+
+function base64FromDataUri(dataUri) {
+  const comma = dataUri.indexOf(",");
+  return comma === -1 ? dataUri : dataUri.slice(comma + 1);
+}
+
+function base64Bytes(base64) {
+  return Math.floor((base64.length * 3) / 4);
+}
+
+/**
+ * 產生要上傳的 PDF base64。頁數多的時候 8.4MB 會爆，
+ * 所以品質從高往低試，讓學生不用自己回去刪頁。
+ */
+function makePdfBase64(pages, onProgress) {
+  const qualities = [0.92, 0.82, 0.72, 0.62];
+  let last = null;
+  for (const q of qualities) {
+    if (onProgress) onProgress(q);
+    const base64 = base64FromDataUri(pagesToPdf(pages, q).output("datauristring"));
+    last = { base64, quality: q, bytes: base64Bytes(base64) };
+    if (last.bytes <= MAX_PDF_BYTES) return last;
+  }
+  return last; // 連最低品質都還是太大，交給呼叫端顯示錯誤
+}
+
 function buildMeta(book, frames) {
   const seen = new Set();
   const authors = [];
@@ -535,18 +583,23 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   noteEl.innerHTML = `
     這是最終印出來的樣子，下面每一張就是 PDF 的一頁，不會有網址和日期頁首頁尾。
-    你的圖是正方形，所以預設把同一張圖模糊放大當背景鋪滿整頁、主圖完整呈現；
-    勾選上面的「圖片裁切鋪滿整頁」可以改成真正的滿版，但上下會被裁掉一部分。
+    圖是正方形時，預設把同一張圖模糊放大當背景鋪滿整頁、主圖完整呈現；
+    勾選「圖片裁切鋪滿整頁」可以改成真正的滿版，但上下會被裁掉一部分。<br>
+    滿意的話直接按「📤 上傳成故事本」就會存進「我的頁面」，不需要先下載再手動上傳；
+    想留一份在電腦裡再按「⬇️ 只下載 PDF」。
   `;
 
   fillToggle.addEventListener("change", renderAll);
   renderAll();
 
+  function pdfReady() {
+    if (window.jspdf && window.jspdf.jsPDF) return true;
+    alert("PDF 元件載入失敗，請檢查網路連線後重新整理頁面。");
+    return false;
+  }
+
   downloadBtn.addEventListener("click", () => {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      alert("PDF 元件載入失敗，請檢查網路連線後重新整理頁面。");
-      return;
-    }
+    if (!pdfReady()) return;
     downloadBtn.disabled = true;
     const originalText = downloadBtn.textContent;
     downloadBtn.textContent = "產生 PDF 中...";
@@ -554,14 +607,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 讓瀏覽器先把按鈕狀態畫出來，再做這個會卡住畫面的同步工作
     setTimeout(() => {
       try {
-        const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-        pages.forEach((p, i) => {
-          if (i > 0) pdf.addPage();
-          pdf.addImage(p.canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 297, 210);
-        });
         const safeTitle = (book.title || "繪本").replace(/[\\/:*?"<>|]/g, "_");
-        pdf.save(`${safeTitle}_繪本.pdf`);
-        statusEl.textContent = "✅ PDF 已下載，可以到「我的頁面 → 上傳故事本」把它上傳。";
+        pagesToPdf(pages, 0.92).save(`${safeTitle}_繪本.pdf`);
+        statusEl.textContent = "✅ PDF 已下載。";
       } catch (err) {
         alert("產生 PDF 失敗：" + err.message);
       } finally {
@@ -570,4 +618,129 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }, 50);
   });
+
+  /* ---------------- 直接上傳成故事本 ----------------
+     省掉「下載 PDF → 回到我的頁面 → 再選檔案上傳」這一趟。 */
+  const uploadBtn = document.getElementById("upload-book-btn");
+  const uploadPanel = document.getElementById("upload-panel");
+  const uploadVis = document.getElementById("upload-visibility");
+  const uploadVisHint = document.getElementById("upload-visibility-hint");
+  const uploadDesc = document.getElementById("upload-desc");
+  const uploadTags = document.getElementById("upload-tags");
+  const uploadConfirmBtn = document.getElementById("upload-confirm-btn");
+  const uploadCancelBtn = document.getElementById("upload-cancel-btn");
+  const uploadMsg = document.getElementById("upload-msg");
+  const uploadQuota = document.getElementById("upload-quota");
+  let existingBooks = null; // 我的故事本清單（用來顯示數量與提醒重複上傳）
+
+  uploadVis.innerHTML = BOOK_VISIBILITY_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+  function updateVisHint() {
+    const opt = BOOK_VISIBILITY_OPTIONS.find((o) => o.value === uploadVis.value);
+    uploadVisHint.textContent = opt ? opt.hint : "";
+  }
+  uploadVis.addEventListener("change", updateVisHint);
+  updateVisHint();
+
+  function showUploadMsg(type, text) {
+    uploadMsg.className = `form-msg show ${type}`;
+    uploadMsg.textContent = text;
+  }
+
+  /** 背景撈一次「我的作品」，順便顯示故事本數量，額度快滿時先提醒 */
+  async function loadBookQuota() {
+    try {
+      const res = await Api.listMine();
+      existingBooks = (res.artworks || []).filter((a) => a.Kind === "book");
+      const max = CONFIG.MAX_BOOKS_PER_USER;
+      uploadQuota.textContent = `目前故事本：${existingBooks.length} / ${max} 本`;
+      if (existingBooks.length >= max) {
+        uploadQuota.textContent += "（已達上限，請先到「我的頁面」刪掉舊的）";
+      }
+    } catch (e) {
+      uploadQuota.textContent = "";
+    }
+  }
+
+  uploadBtn.addEventListener("click", () => {
+    uploadPanel.hidden = !uploadPanel.hidden;
+    if (!uploadPanel.hidden) {
+      if (existingBooks === null) loadBookQuota();
+      uploadPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
+
+  uploadCancelBtn.addEventListener("click", () => {
+    uploadPanel.hidden = true;
+  });
+
+  uploadConfirmBtn.addEventListener("click", async () => {
+    if (!pdfReady()) return;
+
+    if (existingBooks && existingBooks.length >= CONFIG.MAX_BOOKS_PER_USER) {
+      showUploadMsg("error", `故事本已達上限 ${CONFIG.MAX_BOOKS_PER_USER} 本，請先到「我的頁面」刪掉一些再上傳。`);
+      return;
+    }
+    // 同名的故事本很可能是重複上傳（改了幾個字又按一次），先問一下
+    const sameTitle = (existingBooks || []).some((b) => String(b.Title || "").trim() === String(book.title || "").trim());
+    if (sameTitle && !confirm(`你已經上傳過一本叫「${book.title}」的故事本了。\n\n要再上傳一份新的嗎？（舊的不會被覆蓋，需要自己去刪）`)) {
+      return;
+    }
+
+    uploadConfirmBtn.disabled = true;
+    uploadCancelBtn.disabled = true;
+    const originalText = uploadConfirmBtn.textContent;
+    uploadConfirmBtn.textContent = "產生 PDF 中...";
+    showUploadMsg("pending", "正在把繪本轉成 PDF，頁數多的時候要等一下...");
+
+    // 產生 PDF 是同步的重工作，先讓畫面把上面的訊息畫出來
+    await new Promise((r) => setTimeout(r, 50));
+
+    let pdfData = null;
+    try {
+      pdfData = makePdfBase64(pages, (q) => {
+        uploadConfirmBtn.textContent = q < 0.92 ? "檔案較大，重新壓縮中..." : "產生 PDF 中...";
+      });
+    } catch (err) {
+      showUploadMsg("error", "產生 PDF 失敗：" + err.message);
+      uploadConfirmBtn.disabled = false;
+      uploadCancelBtn.disabled = false;
+      uploadConfirmBtn.textContent = originalText;
+      return;
+    }
+
+    if (!pdfData || pdfData.bytes > MAX_PDF_BYTES) {
+      const mb = pdfData ? (pdfData.bytes / 1024 / 1024).toFixed(1) : "?";
+      showUploadMsg("error", `PDF 有 ${mb}MB，超過 9MB 的上傳上限。請回到「故事接龍」把頁數減少一些再試。`);
+      uploadConfirmBtn.disabled = false;
+      uploadCancelBtn.disabled = false;
+      uploadConfirmBtn.textContent = originalText;
+      return;
+    }
+
+    const sizeMb = (pdfData.bytes / 1024 / 1024).toFixed(1);
+    uploadConfirmBtn.textContent = "上傳中，請稍候...";
+    showUploadMsg("pending", `PDF 已產生（${sizeMb}MB），正在上傳，請不要關掉這個頁面...`);
+
+    try {
+      await Api.submitBook({
+        title: book.title || "未命名繪本",
+        description: uploadDesc.value.trim(),
+        tags: uploadTags.value.trim(),
+        visibility: uploadVis.value,
+        fileBase64: pdfData.base64,
+        mimeType: "application/pdf",
+      });
+      showUploadMsg("success", "🎉 上傳成功！可以到「我的頁面 → 故事本」看到這本繪本了。");
+      uploadConfirmBtn.textContent = "✅ 已上傳";
+      uploadCancelBtn.disabled = false;
+      await loadBookQuota();
+    } catch (err) {
+      showUploadMsg("error", "上傳失敗：" + err.message);
+      uploadConfirmBtn.disabled = false;
+      uploadCancelBtn.disabled = false;
+      uploadConfirmBtn.textContent = originalText;
+    }
+  });
+
+  uploadBtn.disabled = false;
 });

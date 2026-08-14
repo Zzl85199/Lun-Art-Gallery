@@ -115,8 +115,8 @@ function initSubmitPage(root, user) {
         <label for="book-file">故事本 PDF *</label>
         <input type="file" id="book-file" accept="application/pdf">
         <div class="form-hint">
-          先到「故事接龍」頁把故事本做好 → 按「📕 產生繪本 / 下載 PDF」→ 在預覽頁按「⬇️ 下載繪本 PDF」，
-          再回到這裡把下載好的 PDF 上傳。檔案請控制在 9MB 以內。
+          <b>比較快的做法：</b>到「故事接龍」頁按「📕 產生繪本 / 下載 PDF」，在預覽頁按「📤 上傳成故事本」就會
+          直接存進來，不用經過這個表單。這個表單留給你上傳自己在別的地方做好的 PDF，檔案請控制在 9MB 以內。
         </div>
         <div class="image-check" id="book-file-check"></div>
       </div>

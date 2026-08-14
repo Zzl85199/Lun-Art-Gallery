@@ -43,6 +43,34 @@
     text-align: center; font-family: var(--font-hand); color: #6b5f4c;
     font-size: 0.85rem; margin: 6px 0 0;
   }
+  .upload-panel {
+    max-width: 1040px;
+    margin: 18px auto 0;
+    background: #fffdf6;
+    border: 2px solid #cbbfa2;
+    border-radius: 18px;
+    padding: 18px 22px 20px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  }
+  .upload-panel-title { font-family: var(--font-hand); font-size: 1.15rem; color: #3a3226; margin: 0 0 2px; }
+  .upload-panel-hint { font-family: var(--font-hand); color: #6b5f4c; font-size: 0.9rem; margin: 0 0 14px; }
+  .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+  .upload-field-wide { grid-column: 1 / -1; }
+  .upload-field label {
+    display: block; font-family: var(--font-hand); color: #5b4f3f;
+    font-size: 0.92rem; margin-bottom: 4px;
+  }
+  .upload-field select, .upload-field input, .upload-field textarea {
+    width: 100%; padding: 9px 12px; border: 2px solid #cbbfa2; border-radius: 10px;
+    background: #fff; font-family: var(--font-hand); font-size: 1rem; color: #3a3226;
+  }
+  .upload-hint { font-family: var(--font-hand); color: #8a7d68; font-size: 0.82rem; margin-top: 4px; }
+  .upload-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  #upload-quota { font-family: var(--font-hand); color: #6b5f4c; font-size: 0.88rem; }
+  @media (max-width: 640px) {
+    .upload-grid { grid-template-columns: 1fr; }
+  }
+
   .print-note {
     max-width: 1040px; margin: 18px auto 0; padding: 0 16px;
     font-family: var(--font-hand); color: #6b5f4c; font-size: 0.92rem; line-height: 1.9;
@@ -51,7 +79,8 @@
 </head>
 <body>
   <div class="print-toolbar">
-    <button class="btn btn-pin" id="download-pdf-btn" disabled>⬇️ 下載繪本 PDF</button>
+    <button class="btn btn-pin" id="upload-book-btn" disabled>📤 上傳成故事本</button>
+    <button class="btn btn-outline-dark" id="download-pdf-btn" disabled>⬇️ 只下載 PDF</button>
     <label class="fill-toggle">
       <input type="checkbox" id="fill-mode-toggle">
       圖片裁切鋪滿整頁
@@ -59,6 +88,32 @@
     <span id="print-status"></span>
     <span class="grow"></span>
     <span style="color:#8a7d68;font-size:0.85rem;">橫式 A4 · 297×210mm</span>
+  </div>
+
+  <div class="upload-panel" id="upload-panel" hidden>
+    <p class="upload-panel-title">📤 把這本繪本直接上傳成故事本</p>
+    <p class="upload-panel-hint">不用先下載再手動上傳，按下面的按鈕就會直接產生 PDF 並存進「我的頁面 → 故事本」。</p>
+    <div class="upload-grid">
+      <div class="upload-field">
+        <label for="upload-visibility">公開範圍</label>
+        <select id="upload-visibility"></select>
+        <div class="upload-hint" id="upload-visibility-hint"></div>
+      </div>
+      <div class="upload-field">
+        <label for="upload-tags">標籤（選填，用逗號分隔）</label>
+        <input type="text" id="upload-tags" placeholder="例如：冒險, 貓咪, 友情">
+      </div>
+      <div class="upload-field upload-field-wide">
+        <label for="upload-desc">創作說明（選填）</label>
+        <textarea id="upload-desc" rows="2" placeholder="說說這本繪本在講什麼、你們是怎麼接下去的..."></textarea>
+      </div>
+    </div>
+    <div class="upload-actions">
+      <button class="btn btn-pin" id="upload-confirm-btn">📤 確認上傳</button>
+      <button class="btn btn-outline-dark" id="upload-cancel-btn">取消</button>
+      <span id="upload-quota"></span>
+    </div>
+    <div class="form-msg" id="upload-msg"></div>
   </div>
 
   <div class="print-note" id="print-note"></div>
